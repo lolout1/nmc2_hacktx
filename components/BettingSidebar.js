@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import moment from "moment";
 
 const BettingSidebar = ({ driverList, timingData, sessionInfo }) => {
@@ -8,6 +8,73 @@ const BettingSidebar = ({ driverList, timingData, sessionInfo }) => {
   const [selectedDriver, setSelectedDriver] = useState(null);
   const [betAmount, setBetAmount] = useState(0);
   const [betType, setBetType] = useState("YES");
+
+  // Dragging state
+  const [isDragging, setIsDragging] = useState(false);
+  const [position, setPosition] = useState({ x: 20, y: 20 });
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [isMinimized, setIsMinimized] = useState(false);
+  const sidebarRef = useRef(null);
+
+  // Handle drag start
+  const handleMouseDown = (e) => {
+    if (e.target.closest('.betting-content')) return; // Don't drag if clicking on content
+    
+    setIsDragging(true);
+    const rect = sidebarRef.current.getBoundingClientRect();
+    setDragOffset({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    });
+    e.preventDefault();
+  };
+
+  // Handle double-click to reset position
+  const handleDoubleClick = (e) => {
+    if (e.target.closest('.betting-content')) return;
+    setPosition({ x: 20, y: 20 });
+  };
+
+  // Handle drag move
+  const handleMouseMove = (e) => {
+    if (!isDragging) return;
+    
+    const newX = e.clientX - dragOffset.x;
+    const newY = e.clientY - dragOffset.y;
+    
+    // Keep sidebar within viewport bounds
+    const maxX = window.innerWidth - 320; // sidebar width
+    const maxY = window.innerHeight - 400; // estimated sidebar height
+    
+    setPosition({
+      x: Math.max(0, Math.min(newX, maxX)),
+      y: Math.max(0, Math.min(newY, maxY))
+    });
+  };
+
+  // Handle drag end
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  // Add global event listeners for dragging
+  useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.userSelect = 'none'; // Prevent text selection while dragging
+    } else {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.userSelect = '';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.userSelect = '';
+    };
+  }, [isDragging, dragOffset]);
 
   // Calculate odds based on current position and performance
   const calculateOdds = (driverNumber, timingData) => {
@@ -108,38 +175,152 @@ const BettingSidebar = ({ driverList, timingData, sessionInfo }) => {
 
   return (
     <>
-      {/* Betting Sidebar */}
-      <div style={{
-        position: "fixed",
-        top: "20px",
-        right: "20px",
-        width: "320px",
-        backgroundColor: "#1a1a1a",
-        border: "1px solid #333",
-        borderRadius: "12px",
-        padding: "16px",
-        zIndex: 1000,
-        color: "#fff",
-        maxHeight: "80vh",
-        overflowY: "auto"
-      }}>
+      {/* CSS for animations */}
+      <style jsx>{`
+        @keyframes pulse {
+          0% { opacity: 1; }
+          50% { opacity: 0.5; }
+          100% { opacity: 1; }
+        }
+        
+        .dragging {
+          transform: rotate(1deg);
+        }
+      `}</style>
+      
+      {/* Draggable Betting Sidebar */}
+      <div 
+        ref={sidebarRef}
+        style={{
+          position: "fixed",
+          left: `${position.x}px`,
+          top: `${position.y}px`,
+          width: "320px",
+          backgroundColor: "#1a1a1a",
+          border: isDragging ? "2px solid #00ff88" : "1px solid #333",
+          borderRadius: "12px",
+          padding: "0",
+          zIndex: 1000,
+          color: "#fff",
+          maxHeight: "80vh",
+          overflowY: "auto",
+          cursor: isDragging ? "grabbing" : "grab",
+          boxShadow: isDragging ? "0 8px 32px rgba(0, 255, 136, 0.3)" : "0 4px 16px rgba(0, 0, 0, 0.3)",
+          transition: isDragging ? "none" : "box-shadow 0.2s ease",
+          transform: isDragging ? "rotate(1deg)" : "rotate(0deg)"
+        }}
+        onMouseDown={handleMouseDown}
+        onDoubleClick={handleDoubleClick}
+      >
+        {/* Drag Handle */}
         <div style={{
+          padding: "8px 16px",
+          backgroundColor: "#0a0a0a",
+          borderBottom: "1px solid #333",
+          borderRadius: "12px 12px 0 0",
+          cursor: "grab",
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          marginBottom: "16px"
+          userSelect: "none"
         }}>
-          <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "600" }}>
-            🎯 Live Betting
-          </h3>
           <div style={{
-            fontSize: "12px",
-            color: "#00ff88",
-            fontWeight: "600"
+            display: "flex",
+            alignItems: "center",
+            gap: "8px"
           }}>
-            ${userBalance.toFixed(2)}
+            <div style={{
+              width: "12px",
+              height: "12px",
+              backgroundColor: "#00ff88",
+              borderRadius: "50%",
+              animation: "pulse 2s infinite"
+            }} />
+            <span style={{
+              fontSize: "12px",
+              fontWeight: "600",
+              color: "#00ff88"
+            }}>
+              🎯 Live Betting
+            </span>
+          </div>
+          <div style={{
+            display: "flex",
+            gap: "8px",
+            alignItems: "center"
+          }}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsMinimized(!isMinimized);
+              }}
+              style={{
+                background: "none",
+                border: "none",
+                color: "#888",
+                cursor: "pointer",
+                fontSize: "12px",
+                padding: "2px 4px",
+                borderRadius: "2px",
+                transition: "color 0.2s"
+              }}
+              onMouseEnter={(e) => e.target.style.color = "#fff"}
+              onMouseLeave={(e) => e.target.style.color = "#888"}
+            >
+              {isMinimized ? "⤢" : "⤡"}
+            </button>
+            <div style={{
+              display: "flex",
+              gap: "2px"
+            }}>
+              <div style={{
+                width: "3px",
+                height: "3px",
+                backgroundColor: "#666",
+                borderRadius: "50%"
+              }} />
+              <div style={{
+                width: "3px",
+                height: "3px",
+                backgroundColor: "#666",
+                borderRadius: "50%"
+              }} />
+              <div style={{
+                width: "3px",
+                height: "3px",
+                backgroundColor: "#666",
+                borderRadius: "50%"
+              }} />
+            </div>
           </div>
         </div>
+
+        {/* Betting Content */}
+        {!isMinimized && (
+          <div className="betting-content" style={{
+            padding: "16px"
+          }}>
+          <div style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "16px"
+          }}>
+            <div style={{
+              fontSize: "12px",
+              color: "#888",
+              fontWeight: "600"
+            }}>
+              Balance
+            </div>
+            <div style={{
+              fontSize: "14px",
+              color: "#00ff88",
+              fontWeight: "700"
+            }}>
+              ${userBalance.toFixed(2)}
+            </div>
+          </div>
 
         <div style={{
           fontSize: "12px",
@@ -270,6 +451,8 @@ const BettingSidebar = ({ driverList, timingData, sessionInfo }) => {
                 </div>
               ))}
             </div>
+          </div>
+        )}
           </div>
         )}
       </div>
