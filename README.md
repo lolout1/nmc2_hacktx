@@ -1,6 +1,6 @@
 ## What it does
 
-PitStopComet bridges HPC computing with real-time F1 decision-making by processing historical and live telemetry at up to 5x race speed to deliver instant, interpretable strategy insights. 
+PitStopComet integrates an AI race assistant with real-time F1 decision-making by processing historical and live telemetry at up to 5x race speed to deliver instant, interpretable strategy insights. 
 
 ### Core Capabilities
 
