@@ -298,6 +298,7 @@ export class ReplayEngine {
     console.log("Initialized replay with static data:", Object.keys(this.state));
     console.log("Has TimingData:", !!this.state.TimingData);
     console.log("Has CarData:", !!this.state.CarData);
+    console.log("Has PitStops:", !!this.state.PitStops, "Count:", this.state.PitStops?.length || 0);
     
     if (this.state.CarData) {
       console.log("CarData structure in state:", {
@@ -464,15 +465,29 @@ export class ReplayEngine {
       if (feed === "CarData" && data.Cars) {
         // Ensure we have an Entries array structure
         const existingEntries = this.state.CarData?.Entries || [];
+        const newEntry = data;
+        
         this.state = deepObjectMerge(this.state, {
           CarData: {
-            Entries: [...existingEntries, data],
+            Entries: [...existingEntries, newEntry],
           },
         });
         
-        // Log only significant updates (not interpolated, less frequently)
+        // Log telemetry updates to debug Driver component
         if (!event.interpolated && this.currentIndex % 50 === 0) {
-          console.log(`[Replay] Updated CarData Entries, now has ${existingEntries.length + 1} entries`);
+          const driversInEntry = Object.keys(newEntry.Cars || {});
+          const firstDriver = driversInEntry[0];
+          const channels = newEntry.Cars?.[firstDriver]?.Channels;
+          console.log(`[Replay] Updated CarData Entries, now has ${existingEntries.length + 1} entries`, {
+            timestamp: newEntry.Utc,
+            drivers: driversInEntry.length,
+            sampleDriver: firstDriver,
+            sampleChannels: channels ? {
+              rpm: channels[0],
+              speed: channels[2],
+              gear: channels[3],
+            } : 'No channels'
+          });
         }
       } else if (feed === "Position") {
         // For live playback, we need to keep a growing array for the Map component

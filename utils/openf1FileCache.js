@@ -189,8 +189,10 @@ function saveSessionToCache(sessionKey, sessionData) {
   // Save each data type to separate CSV file
   saveToCsv(sessionKey, 'drivers', sessionData.drivers);
   saveToCsv(sessionKey, 'location', sessionData.locationData);
+  saveToCsv(sessionKey, 'car_data', sessionData.carData); // Save car telemetry
   saveToCsv(sessionKey, 'laps', sessionData.laps);
   saveToCsv(sessionKey, 'positions', sessionData.positions);
+  saveToCsv(sessionKey, 'pit', sessionData.pitStops); // Save pit stops
   saveToCsv(sessionKey, 'race_control', sessionData.raceControl);
   saveToCsv(sessionKey, 'weather', sessionData.weather);
   
@@ -225,21 +227,29 @@ function loadSessionFromCache(sessionKey) {
   try {
     const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
     
+    // Load raw location data
+    const rawLocationData = loadFromCsv(sessionKey, 'location') || [];
+    
+    // ALWAYS deduplicate location data when loading from cache
+    // This reduces 95K+ points to ~14K for better performance
+    const locationData = deduplicateLocationData(rawLocationData);
+    
     const sessionData = {
       sessionInfo: metadata.sessionInfo,
       meeting: metadata.meeting,
       drivers: loadFromCsv(sessionKey, 'drivers') || [],
-      locationData: loadFromCsv(sessionKey, 'location') || [],
+      locationData: locationData,
       laps: loadFromCsv(sessionKey, 'laps') || [],
       positions: loadFromCsv(sessionKey, 'positions') || [],
+      pitStops: loadFromCsv(sessionKey, 'pit') || [], // Add pit stops
       raceControl: loadFromCsv(sessionKey, 'race_control') || [],
       weather: loadFromCsv(sessionKey, 'weather') || [],
-      carData: [], // Car data not cached due to availability issues
+      carData: loadFromCsv(sessionKey, 'car_data') || [], // Load car data from cache now
       intervals: [],
     };
 
     console.log(`[FileCache] Session ${sessionKey} loaded from cache`);
-    console.log(`[FileCache] Location points: ${sessionData.locationData.length}`);
+    console.log(`[FileCache] Location points: ${sessionData.locationData.length} (deduplicated)`);
     
     return sessionData;
   } catch (error) {

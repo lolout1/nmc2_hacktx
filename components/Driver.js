@@ -121,17 +121,41 @@ const Driver = ({
   
   // Safety check for CarData structure
   if (!CarData || !CarData.Entries || CarData.Entries.length === 0) {
-    console.warn("CarData not available or empty for driver", racingNumber);
+    // Only log for the first driver to avoid spam
+    if (racingNumber === "1" || racingNumber === 1) {
+      console.warn("[Driver] CarData not available or empty", {
+        hasCarData: !!CarData,
+        hasEntries: !!CarData?.Entries,
+        entriesLength: CarData?.Entries?.length,
+      });
+    }
     return null;
   }
   
   const latestEntry = CarData.Entries[CarData.Entries.length - 1];
   if (!latestEntry || !latestEntry.Cars || !latestEntry.Cars[racingNumber]) {
-    console.warn("No car data for driver", racingNumber);
+    // Only log for specific driver to avoid spam
+    if (racingNumber === "1" || racingNumber === 1) {
+      console.warn("[Driver] No car data for driver", racingNumber, {
+        hasEntry: !!latestEntry,
+        hasCars: !!latestEntry?.Cars,
+        availableDrivers: latestEntry?.Cars ? Object.keys(latestEntry.Cars) : [],
+      });
+    }
     return null;
   }
   
   const carData = latestEntry.Cars[racingNumber].Channels;
+  
+  // Debug log telemetry for first driver
+  if ((racingNumber === "1" || racingNumber === 1) && Math.random() < 0.01) {
+    console.log('[Driver] Telemetry for driver', racingNumber, {
+      rpm: carData["0"],
+      speed: carData["2"],
+      gear: carData["3"],
+      throttle: carData["4"],
+    });
+  }
 
   const rpmPercent = (carData["0"] / 15000) * 100;
   const throttlePercent = Math.min(100, carData["4"]);

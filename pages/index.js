@@ -10,6 +10,7 @@ import SpeedTrap, { speedTrapColumns } from "@monaco/components/SpeedTrap";
 import SessionBrowser from "@monaco/components/SessionBrowser";
 import PlaybackControls from "@monaco/components/PlaybackControls";
 import PitLane from "@monaco/components/PitLane";
+import RaceControlSidebar from "@monaco/components/RaceControlSidebar";
 import { buildTimeline, ReplayEngine } from "@monaco/utils/replayEngine";
 import sessionCache from "@monaco/utils/sessionCache";
 import { fetchJSON } from "@monaco/utils/apiClient";
@@ -204,6 +205,11 @@ export default function Home() {
         hasLines: !!data.TimingData.Lines,
         linesCount: Object.keys(data.TimingData.Lines || {}).length
       } : "No TimingData");
+      console.log("PitStops structure:", data.PitStops ? {
+        isArray: Array.isArray(data.PitStops),
+        count: data.PitStops.length,
+        firstPit: data.PitStops[0]
+      } : "No PitStops");
       
       // If CarData exists but has unexpected structure, log the full object
       if (data.CarData && !data.CarData.Entries && !data.CarData.Cars) {
@@ -579,6 +585,15 @@ export default function Home() {
     PitStops,
   } = currentState;
 
+  // Debug: Log PitStops data availability (in render, not useEffect to avoid hooks issues)
+  if (mode === "replay" && PitStops && Math.random() < 0.05) {
+    console.log('[Index] PitStops in currentState:', {
+      count: PitStops.length,
+      firstPit: PitStops[0],
+      currentTime,
+    });
+  }
+
   if (!Heartbeat && mode === "live")
     return (
       <>
@@ -881,12 +896,16 @@ export default function Home() {
         </div>
 
         <ResponsiveTable
-          cols="2fr 2fr 1fr"
+          cols="1.5fr 1fr"
           style={{
             borderBottom: "1px solid var(--colour-border)",
           }}
         >
-          <div style={{ borderRight: "1px solid var(--colour-border)" }}>
+          {/* TRACK with overlaid sidebars */}
+          <div style={{ 
+            borderRight: "1px solid var(--colour-border)",
+            position: "relative", // For absolutely positioned sidebars
+          }}>
             <div
               style={{
                 padding: "var(--space-2) var(--space-3)",
@@ -909,14 +928,20 @@ export default function Home() {
                 }
                 
                 return (
-                  <Map
-                    circuit={SessionInfo.Meeting.Circuit.Key}
-                    Position={positionToRender}
-                    DriverList={DriverList}
-                    TimingData={TimingData}
-                    TrackStatus={TrackStatus}
-                    WindDirection={WeatherData.WindDirection}
-                  />
+                  <div style={{ 
+                    transform: 'scale(0.85)', 
+                    transformOrigin: 'top left',
+                    width: '117.6%', // Compensate for scale to prevent layout shift
+                  }}>
+                    <Map
+                      circuit={SessionInfo.Meeting.Circuit.Key}
+                      Position={positionToRender}
+                      DriverList={DriverList}
+                      TimingData={TimingData}
+                      TrackStatus={TrackStatus}
+                      WindDirection={WeatherData.WindDirection}
+                    />
+                  </div>
                 );
               })()
             
@@ -933,6 +958,14 @@ export default function Home() {
               </div>
             )}
             
+            {/* Race Control Sidebar - shows race control messages */}
+            {RaceControlMessages && (
+              <RaceControlSidebar 
+                raceControlMessages={RaceControlMessages}
+                sessionData={SessionData}
+              />
+            )}
+            
             {/* Pit Lane Sidebar - shows cars currently in the pit */}
             {mode === "replay" && PitStops && (
               <PitLane 
@@ -943,93 +976,7 @@ export default function Home() {
             )}
           </div>
 
-          <div
-            style={{
-              width: "100%",
-              display: "flex",
-              flexDirection: "column",
-              borderRight: "1px solid var(--colour-border)",
-            }}
-          >
-            <div
-              style={{
-                padding: "var(--space-2) var(--space-3)",
-                backgroundColor: "var(--colour-offset)",
-              }}
-            >
-              <p>
-                <strong>RACE CONTROL MESSAGES</strong>
-              </p>
-            </div>
-            {!!RaceControlMessages ? (
-              <ul
-                style={{
-                  listStyle: "none",
-                  height: "200px",
-                  overflow: "auto",
-                  flexGrow: 1,
-                }}
-              >
-                {[
-                  ...Object.values(RaceControlMessages.Messages),
-                  ...Object.values(SessionData.StatusSeries),
-                ]
-                  .sort(sortUtc)
-                  .map((event, i) => (
-                    <li
-                      key={`race-control-${event.Utc}-${i}`}
-                      style={{ padding: "var(--space-3)", display: "flex" }}
-                    >
-                      <span
-                        style={{
-                          color: "grey",
-                          whiteSpace: "nowrap",
-                          marginRight: "var(--space-4)",
-                        }}
-                      >
-                        {moment.utc(event.Utc).format("HH:mm:ss")}
-                        {event.Lap && ` / Lap ${event.Lap}`}
-                      </span>
-                      {event.Category === "Flag" && (
-                        <span
-                          style={{
-                            backgroundColor: getFlagColour(event.Flag).bg,
-                            color:
-                              getFlagColour(event.Flag).fg ??
-                              "var(--colour-fg)",
-                            border: "1px solid var(--colour-border)",
-                            borderRadius: "var(--space-1)",
-                            padding: "0 var(--space-2)",
-                            marginRight: "var(--space-3)",
-                          }}
-                        >
-                          FLAG
-                        </span>
-                      )}
-                      {event.Message && <span>{event.Message.trim()}</span>}
-                      {event.TrackStatus && (
-                        <span>TrackStatus: {event.TrackStatus}</span>
-                      )}
-                      {event.SessionStatus && (
-                        <span>SessionStatus: {event.SessionStatus}</span>
-                      )}
-                    </li>
-                  ))}
-              </ul>
-            ) : (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  height: "100%",
-                }}
-              >
-                <p>NO DATA YET</p>
-              </div>
-            )}
-          </div>
-
+          {/* TEAM RADIO (moved from 3rd to 2nd column) */}
           <div
             style={{
               width: "100%",

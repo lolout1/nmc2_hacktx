@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 
 const PitLaneContainer = styled.div`
   position: absolute;
-  top: 80px;
+  bottom: 20px;
   right: 20px;
   background: var(--colour-bg);
   border: 1px solid var(--colour-border);
@@ -11,7 +11,7 @@ const PitLaneContainer = styled.div`
   padding: var(--space-3);
   min-width: 200px;
   max-width: 250px;
-  max-height: 400px;
+  max-height: 300px;
   overflow-y: auto;
   z-index: 100;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
@@ -114,6 +114,13 @@ const PitLane = ({ pitStops = [], driverList = {}, currentTime }) => {
   const [activePits, setActivePits] = useState([]);
 
   useEffect(() => {
+    // Debug logging
+    console.log('[PitLane] Update:', {
+      pitStopsCount: pitStops?.length || 0,
+      currentTime,
+      hasCurrentTime: !!currentTime,
+    });
+
     if (!pitStops || pitStops.length === 0 || !currentTime) {
       setActivePits([]);
       return;
@@ -128,7 +135,18 @@ const PitLane = ({ pitStops = [], driverList = {}, currentTime }) => {
       const pitEndTime = pitStartTime + (pit.pit_duration * 1000); // Convert seconds to ms
       
       // Check if current time is within pit stop window
-      return currentTimeMs >= pitStartTime && currentTimeMs <= pitEndTime;
+      const isActive = currentTimeMs >= pitStartTime && currentTimeMs <= pitEndTime;
+      
+      if (isActive) {
+        console.log('[PitLane] Active pit:', {
+          driver: pit.driver_number,
+          pitStart: pit.date,
+          duration: pit.pit_duration,
+          currentTime,
+        });
+      }
+      
+      return isActive;
     });
 
     // Sort by pit start time (most recent first)
@@ -137,53 +155,70 @@ const PitLane = ({ pitStops = [], driverList = {}, currentTime }) => {
     setActivePits(active);
   }, [pitStops, currentTime]);
 
-  if (activePits.length === 0) {
-    return null; // Hide component when no one is in pit
+  // Always show during replay if pit data exists, with a message when empty
+  const showComponent = pitStops && pitStops.length > 0;
+  
+  if (!showComponent) {
+    console.log('[PitLane] Not showing: no pit stops data');
+    return null;
   }
+  
+  console.log('[PitLane] Rendering with', activePits.length, 'active pits');
 
   return (
-    <PitLaneContainer isEmpty={activePits.length === 0}>
+    <PitLaneContainer isEmpty={false}>
       <PitLaneTitle>
         <PitIcon>🔧</PitIcon>
-        PIT LANE ({activePits.length})
+        PIT LANE {activePits.length > 0 ? `(${activePits.length})` : ''}
       </PitLaneTitle>
       
-      {activePits.map((pit, index) => {
-        const driver = driverList[pit.driver_number];
-        const driverName = driver?.Tla || driver?.BroadcastName || `#${pit.driver_number}`;
-        const teamColor = driver?.TeamColour;
-        const headshotUrl = driver?.HeadshotUrl;
+      {activePits.length === 0 ? (
+        <div style={{ 
+          padding: 'var(--space-2)', 
+          fontSize: '12px', 
+          color: 'rgba(255, 255, 255, 0.5)',
+          textAlign: 'center'
+        }}>
+          No active pit stops
+        </div>
+      ) : (
+        activePits.map((pit, index) => {
+          const driver = driverList[pit.driver_number];
+          const driverName = driver?.Tla || driver?.BroadcastName || `#${pit.driver_number}`;
+          const teamColor = driver?.TeamColour;
+          const headshotUrl = driver?.HeadshotUrl;
 
-        return (
-          <PitEntry key={`${pit.driver_number}-${pit.date}-${index}`} teamColor={teamColor}>
-            {headshotUrl ? (
-              <DriverImage 
-                src={headshotUrl} 
-                alt={driverName}
-                teamColor={teamColor}
-                onError={(e) => {
-                  // Fallback to placeholder if image fails to load
-                  e.target.style.display = 'none';
-                  e.target.nextSibling.style.display = 'flex';
-                }}
-              />
-            ) : (
-              <DriverImagePlaceholder teamColor={teamColor}>
-                {driverName.substring(0, 2)}
-              </DriverImagePlaceholder>
-            )}
-            
-            <DriverInfo>
-              <DriverName>
-                {driverName}
-                <DriverNumber> #{pit.driver_number}</DriverNumber>
-              </DriverName>
-              <PitDuration>⏱️ {pit.pit_duration?.toFixed(1)}s</PitDuration>
-              <PitLap>Lap {pit.lap_number}</PitLap>
-            </DriverInfo>
-          </PitEntry>
-        );
-      })}
+          return (
+            <PitEntry key={`${pit.driver_number}-${pit.date}-${index}`} teamColor={teamColor}>
+              {headshotUrl ? (
+                <DriverImage 
+                  src={headshotUrl} 
+                  alt={driverName}
+                  teamColor={teamColor}
+                  onError={(e) => {
+                    // Fallback to placeholder if image fails to load
+                    e.target.style.display = 'none';
+                    e.target.nextSibling.style.display = 'flex';
+                  }}
+                />
+              ) : (
+                <DriverImagePlaceholder teamColor={teamColor}>
+                  {driverName.substring(0, 2)}
+                </DriverImagePlaceholder>
+              )}
+              
+              <DriverInfo>
+                <DriverName>
+                  {driverName}
+                  <DriverNumber> #{pit.driver_number}</DriverNumber>
+                </DriverName>
+                <PitDuration>⏱️ {pit.pit_duration?.toFixed(1)}s</PitDuration>
+                <PitLap>Lap {pit.lap_number}</PitLap>
+              </DriverInfo>
+            </PitEntry>
+          );
+        })
+      )}
     </PitLaneContainer>
   );
 };

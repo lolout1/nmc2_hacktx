@@ -235,6 +235,21 @@ export function transformSessionInfo(sessionInfo, meeting) {
 }
 
 /**
+ * Format seconds to lap time string (MM:SS.mmm)
+ * @param {number} seconds - Time in seconds
+ * @returns {string} Formatted time string
+ */
+function formatLapTime(seconds) {
+  if (!seconds || seconds === 0) return null;
+  
+  const minutes = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  
+  // Format as M:SS.mmm
+  return `${minutes}:${secs.toFixed(3).padStart(6, '0')}`;
+}
+
+/**
  * Create timing data from positions and laps
  * This creates a basic timing table structure
  * @param {Array} positions - OpenF1 position data
@@ -269,6 +284,15 @@ export function transformTimingData(positions, drivers, laps) {
     const driverLaps = safeLaps.filter(lap => lap.driver_number === driver.driver_number);
     const lastLap = driverLaps[driverLaps.length - 1];
     const position = latestPositions[driver.driver_number] || (Object.keys(lines).length + 1);
+    
+    // Find best (fastest) lap
+    let bestLapTime = null;
+    if (driverLaps.length > 0) {
+      const validLaps = driverLaps.filter(lap => lap.lap_duration && lap.lap_duration > 0);
+      if (validLaps.length > 0) {
+        bestLapTime = Math.min(...validLaps.map(lap => lap.lap_duration));
+      }
+    }
 
     lines[driver.driver_number] = {
       RacingNumber: String(driver.driver_number),
@@ -276,25 +300,28 @@ export function transformTimingData(positions, drivers, laps) {
       Position: String(position),
       ShowPosition: true,
       NumberOfLaps: driverLaps.length,
+      NumberOfPitStops: 0, // Will be updated from pit data later
       InPit: false,
       PitOut: false,
       Stopped: false,
       Retired: false,
+      KnockedOut: false,
       Status: 0,
       Sectors: lastLap ? [
-        { Value: lastLap.duration_sector_1 || 0 },
-        { Value: lastLap.duration_sector_2 || 0 },
-        { Value: lastLap.duration_sector_3 || 0 },
+        { Value: formatLapTime(lastLap.duration_sector_1) },
+        { Value: formatLapTime(lastLap.duration_sector_2) },
+        { Value: formatLapTime(lastLap.duration_sector_3) },
       ] : [
-        { Value: 0 },
-        { Value: 0 },
-        { Value: 0 },
+        { Value: null },
+        { Value: null },
+        { Value: null },
       ],
       BestLapTime: {
-        Value: lastLap?.lap_duration || 0,
+        Value: formatLapTime(bestLapTime),
+        Lap: bestLapTime ? driverLaps.findIndex(lap => lap.lap_duration === bestLapTime) + 1 : null,
       },
       LastLapTime: {
-        Value: lastLap?.lap_duration || 0,
+        Value: formatLapTime(lastLap?.lap_duration),
       },
       Speeds: {
         I1: {
@@ -405,6 +432,47 @@ export function transformPitStops(pitStops) {
 }
 
 /**
+ * Transform timing app data (tire compounds, stints)
+ * @param {Array} laps - OpenF1 laps data  
+ * @param {Array} drivers - OpenF1 drivers data
+ * @returns {Object} Monaco TimingAppData format
+ */
+export function transformTimingAppData(laps, drivers) {
+  const lines = {};
+  
+  const safeDrivers = drivers || [];
+  const safeLaps = laps || [];
+  
+  safeDrivers.forEach(driver => {
+    if (!driver || driver.driver_number === undefined) {
+      return;
+    }
+    
+    // For practice sessions, we don't have stint/tire data from OpenF1
+    // But we can provide a basic structure
+    lines[driver.driver_number] = {
+      RacingNumber: String(driver.driver_number),
+      GridPos: String(driver.driver_number), // Placeholder
+      Stints: {
+        0: {
+          Compound: 'UNKNOWN', // OpenF1 doesn't provide tire compound in practice
+          New: 'true',
+          TyresNotChanged: '0',
+          TotalLaps: safeLaps.filter(lap => lap.driver_number === driver.driver_number).length,
+          StartLaps: 0,
+        }
+      }
+    };
+  });
+  
+  console.log(`[Transformer] Created timing app data for ${Object.keys(lines).length} drivers`);
+  
+  return {
+    Lines: lines,
+  };
+}
+
+/**
  * Transform complete OpenF1 session data to Monaco replay format
  * This is the main entry point for data transformation
  * @param {Object} openf1Data - Complete OpenF1 data object
@@ -435,9 +503,7 @@ export function transformCompleteSession(openf1Data) {
     WeatherData: transformWeather(weather),
     TimingData: transformTimingData(positions, drivers, laps),
     TimingStats: transformTimingStats(laps, drivers),
-    TimingAppData: {
-      Lines: {}, // Not available in OpenF1
-    },
+    TimingAppData: transformTimingAppData(laps, drivers), // Tire compound data
     PitStops: transformPitStops(pitStops), // Pit lane data
     
     // Time-series data
@@ -490,6 +556,7 @@ export default {
   transformSessionInfo,
   transformTimingData,
   transformTimingStats,
+  transformTimingAppData,
   transformPitStops,
   transformCompleteSession,
 };
