@@ -74,7 +74,7 @@ export default function Home() {
   // Mode management
   const [mode, setMode] = useState("live"); // "live", "browser", or "replay"
   const [selectedSession, setSelectedSession] = useState(null);
-  
+
   // Live mode state
   const [connected, setConnected] = useState(false);
   const [liveState, setLiveState] = useState({});
@@ -158,7 +158,7 @@ export default function Home() {
       if (sessionCache.has(cacheKey)) {
         console.log("[OpenF1] Found cached session:", sessionInfo.sessionKey);
         const cachedData = sessionCache.get(cacheKey);
-        
+
         // Validate cached data has location data
         if (cachedData?.Position?.Position?.length > 0) {
           console.log("[OpenF1] Cache valid with", cachedData.Position.Position.length, "position snapshots");
@@ -169,10 +169,10 @@ export default function Home() {
               data = null;
         }
       }
-      
+
       if (!data) {
         console.log("[OpenF1] Fetching session from API:", sessionInfo.sessionKey);
-        
+
         // Fetch OpenF1 session data with retry logic
         // Sequential fetching with delays takes longer, so we need a longer timeout
         const responseData = await fetchJSON(
@@ -186,7 +186,7 @@ export default function Home() {
             },
           }
         );
-        
+
         // Transform OpenF1 data to Monaco format
         console.log("[OpenF1] Transforming data to Monaco format");
         data = transformCompleteSession(responseData.data);
@@ -221,10 +221,10 @@ export default function Home() {
         count: data.PitStops.length,
         firstPit: data.PitStops[0]
       } : "No PitStops");
-      
+
       // If CarData exists but has unexpected structure, log the full object
       if (data.CarData && !data.CarData.Entries && !data.CarData.Cars) {
-        console.warn("CarData has unexpected structure. First 100 chars:", 
+        console.warn("CarData has unexpected structure. First 100 chars:",
           JSON.stringify(data.CarData).substring(0, 100));
       }
 
@@ -246,7 +246,7 @@ export default function Home() {
 
       // Validate session data quality
       const positionCount = data.Position?.Position?.length || 0;
-      
+
       // Check if we have enough position snapshots
       if (positionCount < 2) {
         console.error(`[Init] Insufficient position data: ${positionCount} snapshot(s). Need at least 2.`);
@@ -261,22 +261,22 @@ export default function Home() {
         setLoadingReplay(false);
         return;
       }
-      
+
       // Validate that positions actually vary (not all identical)
       if (positionCount >= 2) {
         const pos1 = data.Position.Position[0];
         const pos2 = data.Position.Position[1];
-        
+
         if (pos1?.Entries && pos2?.Entries) {
           const firstDriver = Object.keys(pos1.Entries)[0];
           const coord1 = pos1.Entries[firstDriver];
           const coord2 = pos2.Entries[firstDriver];
-          
+
           const distance = Math.sqrt(
             Math.pow((coord2?.X || 0) - (coord1?.X || 0), 2) +
             Math.pow((coord2?.Y || 0) - (coord1?.Y || 0), 2)
           );
-          
+
           if (distance < 1) {
             console.error(`[Init] Position data contains identical coordinates. Distance=${distance.toFixed(2)}`);
             alert(
@@ -289,7 +289,7 @@ export default function Home() {
             setLoadingReplay(false);
             return;
           }
-          
+
           // Warn if we have very few snapshots
           if (positionCount < 10) {
             console.warn(`[Init] Limited position data: ${positionCount} snapshots. Replay may be choppy.`);
@@ -300,7 +300,7 @@ export default function Home() {
       // Build timeline from data with user-selected interpolation quality
       const quality = sessionInfo.interpolationQuality || 'HIGH';
       console.log(`[Init] Building timeline with ${quality} quality interpolation`);
-      
+
       const timeline = buildTimeline(data, {
         interpolate: positionCount >= 2, // Only interpolate if we have enough data
         quality, // User-selected: 'LOW', 'MEDIUM', 'HIGH', 'ULTRA'
@@ -323,9 +323,9 @@ export default function Home() {
       setSelectedSession(sessionInfo);
       setMode("replay");
       setIsPlaying(false); // Start paused - user must press play
-      
+
       console.log("[Init] Replay loaded. Press ▶ to start playback.");
-      
+
       // Notify server about mode change
       if (socket.current?.readyState === WebSocket.OPEN) {
         socket.current.send(JSON.stringify({ type: "setMode", mode: "replay" }));
@@ -387,7 +387,7 @@ export default function Home() {
     setReplayState({});
     setIsPlaying(false);
     setProgress(0);
-    
+
     // Notify server about mode change
     if (socket.current?.readyState === WebSocket.OPEN) {
       socket.current.send(JSON.stringify({ type: "setMode", mode: "live" }));
@@ -710,7 +710,7 @@ export default function Home() {
               <p style={{ marginRight: "var(--space-4)" }}>
                 Data updated: {moment.utc(updated).format("HH:mm:ss.SSS")} UTC
               </p>
-              
+
               {/* AI Assistant Button */}
               <button
                 onClick={() => setAiModalOpen(true)}
@@ -823,7 +823,7 @@ export default function Home() {
           }}
         >
           {/* TRACK with overlaid sidebars */}
-          <div style={{ 
+          <div style={{
                           borderRight: "1px solid var(--colour-border)",
             position: "relative", // For absolutely positioned sidebars
           }}>
@@ -837,7 +837,7 @@ export default function Home() {
                 <strong>TRACK</strong>
               </p>
             </div>
-            
+
             {/* Strategy Focus Selector - driver selection above track */}
             {mode === "replay" && DriverList && (
               <StrategyFocusSelector
@@ -848,21 +848,21 @@ export default function Home() {
                 onCompareModeToggle={() => setCompareMode(!compareMode)}
               />
             )}
-            
+
             {!!Position ? (
               (() => {
                 const positionToRender = Position.Position?.[Position.Position.length - 1];
-                
+
                 // Debug: Log what we're rendering every 2 seconds
                 if (mode === "replay" && positionToRender && Math.random() < 0.05) {
                   const firstDriver = Object.keys(positionToRender.Entries || {})[0];
                   const coords = positionToRender.Entries?.[firstDriver];
                   console.log(`[UI] Rendering position for Map: Driver ${firstDriver} at X=${coords?.X?.toFixed(0)}, Y=${coords?.Y?.toFixed(0)}, Position buffer length=${Position.Position?.length}`);
                 }
-                
+
                 return (
-                  <div style={{ 
-                    transform: 'scale(0.85)', 
+                  <div style={{
+                    transform: 'scale(0.85)',
                     transformOrigin: 'top left',
                     width: '117.6%', // Compensate for scale to prevent layout shift
                   }}>
@@ -877,7 +877,7 @@ export default function Home() {
                   </div>
                 );
               })()
-            
+
             ) : (
               <div
                 style={{
@@ -890,33 +890,33 @@ export default function Home() {
                 <p>NO DATA YET</p>
               </div>
             )}
-            
+
             {/* Race Control Sidebar - shows race control messages */}
             {RaceControlMessages && (
-              <RaceControlSidebar 
+              <RaceControlSidebar
                 raceControlMessages={RaceControlMessages}
                 sessionData={SessionData}
               />
             )}
-            
+
             {/* Pit Lane Sidebar - shows cars currently in the pit */}
             {mode === "replay" && PitStops && (
-              <PitLane 
+              <PitLane
                 pitStops={PitStops}
                 driverList={DriverList}
                 currentTime={currentTime}
               />
             )}
-            
+
             {/* ML Predictions Sidebar - Monte Carlo simulations */}
             {mode === "replay" && SessionInfo && (
-              <MLPredictions 
+              <MLPredictions
                 sessionData={SessionInfo}
                 driverList={DriverList}
                 timingData={TimingData}
               />
             )}
-            
+
             {/* Strategy Command Center - HPC-powered driver-specific strategies */}
             {mode === "replay" && focusDriver && !compareMode && (
               <StrategyCommandCenter
@@ -1018,10 +1018,10 @@ export default function Home() {
                           // Only render if we have CarData, or show simplified version
                           if (!CarData || !CarData.Entries || CarData.Entries.length === 0) {
                             return (
-                              <div key={`timing-data-${racingNumber}`} 
-                                style={{ 
-                                  padding: "var(--space-3)", 
-                                  borderBottom: "1px solid var(--colour-border)" 
+                              <div key={`timing-data-${racingNumber}`}
+                                style={{
+                                  padding: "var(--space-3)",
+                                  borderBottom: "1px solid var(--colour-border)"
                                 }}>
                                 <p>P{line.Position} - {DriverList?.[racingNumber]?.Tla || racingNumber}</p>
                               </div>
@@ -1170,7 +1170,7 @@ export default function Home() {
           api.multiviewer.app.
         </p>
       </main>
-      
+
       {mode === "replay" && (
         <PlaybackControls
           isPlaying={isPlaying}

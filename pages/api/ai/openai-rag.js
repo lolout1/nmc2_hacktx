@@ -38,7 +38,8 @@ export default async function handler(req, res) {
   const startTime = Date.now();
 
   try {
-    const scriptPath = path.join(process.cwd(), 'montecarlo', 'openai_rag.py');
+    // Use the RAG v2 system with embeddings
+    const scriptPath = path.join(process.cwd(), 'montecarlo', 'openai_rag_v2.py');
     
     // Build arguments
     const args = [scriptPath, sessionKey, driverNumber.toString(), action];
@@ -47,8 +48,15 @@ export default async function handler(req, res) {
       args.push(question);
     }
 
-    // Run Python script
-    const result = await runPythonScript('python', args);
+    // Set environment variables for Python subprocess
+    const env = {
+      ...process.env,
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY || process.env.OPEN_API_KEY || '',
+      PYTHONUNBUFFERED: '1' // Ensure Python output isn't buffered
+    };
+
+    // Run Python script with environment
+    const result = await runPythonScript('python', args, env);
     
     const totalTime = Date.now() - startTime;
     
@@ -72,9 +80,9 @@ export default async function handler(req, res) {
   }
 }
 
-function runPythonScript(command, args) {
+function runPythonScript(command, args, env = process.env) {
   return new Promise((resolve, reject) => {
-    const process = spawn(command, args);
+    const process = spawn(command, args, { env });
     
     let stdoutData = '';
     let stderrData = '';

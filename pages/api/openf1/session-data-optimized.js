@@ -37,29 +37,28 @@ export default async function handler(req, res) {
       });
     }
 
-    // Return only essential data to avoid size limits
+    // Return ALL cached data - it's already loaded in memory
+    // The 4MB issue was from OpenF1 API response, not from cached data
     const optimizedData = {
       sessionInfo: cachedData.sessionInfo,
       meeting: cachedData.meeting,
       drivers: cachedData.drivers,
-      // Limit location data to recent points only
-      location: cachedData.location?.slice(-1000) || [], // Last 1000 points
-      // Limit car data to recent points only  
-      carData: cachedData.carData?.slice(-2000) || [], // Last 2000 points
-      // Keep all laps, positions, pit stops (these are smaller)
+      location: cachedData.location || [],
+      carData: cachedData.carData || [],
       laps: cachedData.laps || [],
       positions: cachedData.positions || [],
       pitStops: cachedData.pitStops || [],
       stints: cachedData.stints || [],
       weather: cachedData.weather || [],
       raceControl: cachedData.raceControl || [],
-      // Metadata
+      // Metadata for reference
       metadata: {
         totalLocationPoints: cachedData.location?.length || 0,
         totalCarDataPoints: cachedData.carData?.length || 0,
         totalLaps: cachedData.laps?.length || 0,
         totalPitStops: cachedData.pitStops?.length || 0,
-        cacheTimestamp: cachedData.cacheTimestamp
+        cacheTimestamp: cachedData.cacheTimestamp,
+        note: 'Using full cached dataset'
       }
     };
 
@@ -70,7 +69,13 @@ export default async function handler(req, res) {
       pitStops: optimizedData.pitStops.length
     });
 
-    return res.status(200).json(optimizedData);
+    // Return data in the same format as the original endpoint (wrapped in 'data' property)
+    return res.status(200).json({
+      sessionKey,
+      source: 'OpenF1 Cache (Optimized)',
+      timestamp: new Date().toISOString(),
+      data: optimizedData
+    });
 
   } catch (error) {
     console.error(`[API OpenF1] Error:`, error);

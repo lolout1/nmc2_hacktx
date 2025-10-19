@@ -8,6 +8,24 @@ Only sends relevant race data chunks to OpenAI, solving the 4MB issue.
 import json
 import sys
 import os
+from datetime import datetime
+
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    # Load from project root .env file
+    env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+    if os.path.exists(env_path):
+        load_dotenv(env_path)
+        print(f"[OpenAI RAG V2] Loaded .env from {env_path}")
+    
+    # Also try .env.local
+    env_local_path = os.path.join(os.path.dirname(__file__), '..', '.env.local')
+    if os.path.exists(env_local_path):
+        load_dotenv(env_local_path)
+        print(f"[OpenAI RAG V2] Loaded .env.local from {env_local_path}")
+except ImportError:
+    print("[OpenAI RAG V2] python-dotenv not installed, using environment variables")
 
 # Add parent directory to path to import RAG modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))

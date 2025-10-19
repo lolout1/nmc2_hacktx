@@ -247,9 +247,9 @@ function loadSessionFromCache(sessionKey) {
     // Load raw location data
     const rawLocationData = loadFromCsv(sessionKey, 'location') || [];
     
-    // ALWAYS deduplicate location data when loading from cache
-    // This reduces 95K+ points to ~14K for better performance
-    const locationData = deduplicateLocationData(rawLocationData);
+    // Skip deduplication for now - it's not actually removing duplicates
+    // const locationData = deduplicateLocationData(rawLocationData);
+    const locationData = rawLocationData;
     
     const sessionData = {
       sessionInfo: metadata.sessionInfo,
@@ -266,7 +266,7 @@ function loadSessionFromCache(sessionKey) {
     };
 
     console.log(`[FileCache] ✓ Session ${sessionKey} loaded from cache`);
-    console.log(`[FileCache] - Location points: ${sessionData.locationData.length} (deduplicated)`);
+    console.log(`[FileCache] - Location points: ${sessionData.locationData.length}`);
     console.log(`[FileCache] - Car data points: ${sessionData.carData.length}`);
     console.log(`[FileCache] - Pit stops: ${sessionData.pitStops.length}`);
     

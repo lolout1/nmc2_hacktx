@@ -12,7 +12,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { action, sessionKey, driverNumber, question, raceData } = req.body;
+  const { action, sessionKey, driverNumber, question, snapshot, context, strategicData, driverName, simple } = req.body;
 
   if (!sessionKey || !driverNumber) {
     return res.status(400).json({ 
@@ -32,35 +32,134 @@ export default async function handler(req, res) {
     });
   }
 
-  console.log(`[Fallback AI] ${action} for driver #${driverNumber} in session ${sessionKey}`);
+  console.log(`[Fallback AI] ===== RECEIVED REQUEST =====`);
+  console.log(`[Fallback AI] Action: ${action}`);
+  console.log(`[Fallback AI] Driver: #${driverNumber}`);
+  console.log(`[Fallback AI] Session: ${sessionKey}`);
+  console.log(`[Fallback AI] Snapshot keys:`, snapshot ? Object.keys(snapshot) : 'NULL');
+  console.log(`[Fallback AI] Context length:`, context ? `${context.length} chars` : 'NULL');
+  console.log(`[Fallback AI] Strategic data:`, strategicData ? 'Present' : 'NULL');
 
   // Get API key from environment
   const apiKey = process.env.OPENAI_API_KEY || process.env.OPEN_API_KEY;
+  console.log(`[Fallback AI] API key status:`, apiKey ? `Found (${apiKey.substring(0, 15)}...)` : 'NOT FOUND');
   
   if (!apiKey) {
     console.log('[Fallback AI] No OpenAI API key found, using rule-based responses');
     // Fall back to rule-based responses
     try {
-      const context = buildRaceContext(raceData, driverNumber);
-      
+      // Prefer compact snapshot and/or formatted context coming from the client
+      if (snapshot || context) {
+        // Intent fast-path using strategicData
+        if (action === 'question') {
+          if (simple) {
+            const answer = generateSimpleRuleBasedAnswer(question, driverName || `Driver #${driverNumber}`);
+            console.log('[Fallback AI] ⚡ Simple rule-based answer');
+            return res.status(200).json({
+              status: 'success',
+              type: 'question',
+              driver_number: driverNumber,
+              question,
+              answer: answer,
+              timestamp: new Date().toISOString(),
+              source: 'rule-based-simple'
+            });
+          } else {
+            const fast = answerFromStrategicData(question, strategicData);
+            if (fast) {
+              console.log('[Fallback AI] ⚡ Fast intent answer from strategicData');
+              return res.status(200).json({
+                status: 'success',
+                type: 'question',
+                driver_number: driverNumber,
+                question,
+                answer: fast,
+                timestamp: new Date().toISOString(),
+                source: 'rule-based-fast'
+              });
+            }
+          }
+        }
+        if (action === 'summary') {
+          if (simple) {
+            const summary = generateSimpleRuleBasedSummary(driverName || `Driver #${driverNumber}`);
+            console.log(`[Fallback AI] ✅ Generated simple rule-based summary (${summary?.length || 0} chars)`);
+            return res.status(200).json({
+              status: 'success',
+              type: 'summary',
+              driver_number: driverNumber,
+              summary,
+              timestamp: new Date().toISOString(),
+              source: 'rule-based-simple'
+            });
+          } else {
+            const summary = generateRuleSummaryFromSnapshot(snapshot, context, strategicData, driverNumber);
+            console.log(`[Fallback AI] ✅ Generated rule-based summary (${summary?.length || 0} chars)`);
+            return res.status(200).json({
+              status: 'success',
+              type: 'summary',
+              driver_number: driverNumber,
+              summary,
+              timestamp: new Date().toISOString(),
+              source: 'rule-based'
+            });
+          }
+        } else {
+          if (simple) {
+            const answer = generateSimpleRuleBasedAnswer(question, driverName || `Driver #${driverNumber}`);
+            console.log(`[Fallback AI] ✅ Generated simple rule-based answer (${answer?.length || 0} chars)`);
+            return res.status(200).json({
+              status: 'success',
+              type: 'question',
+              driver_number: driverNumber,
+              question,
+              answer,
+              timestamp: new Date().toISOString(),
+              source: 'rule-based-simple'
+            });
+          } else {
+            const answer = answerRuleFromSnapshot(question, snapshot, context, strategicData, driverNumber);
+            console.log(`[Fallback AI] ✅ Generated rule-based answer (${answer?.length || 0} chars)`);
+            return res.status(200).json({
+              status: 'success',
+              type: 'question',
+              driver_number: driverNumber,
+              question,
+              answer,
+              timestamp: new Date().toISOString(),
+              source: 'rule-based'
+            });
+          }
+        }
+      }
+
+      // As a fallback, try to build a minimal context from strategicData
+      const minimalContext = strategicData
+        ? {
+            driver_state: {
+              position: strategicData?.driver?.position,
+            },
+          }
+        : {};
+
       if (action === 'summary') {
-        const summary = await generateSummary(context, driverNumber);
+        const summary = `**SITUATION**\n${context || 'Insufficient race context provided.'}`;
         return res.status(200).json({
           status: 'success',
           type: 'summary',
           driver_number: driverNumber,
-          summary: summary,
+          summary,
           timestamp: new Date().toISOString(),
           source: 'rule-based'
         });
       } else {
-        const answer = await answerQuestion(question, context, driverNumber);
+        const answer = `Based on available context: ${context ? 'see provided race data.' : 'not enough data to provide a detailed answer.'}`;
         return res.status(200).json({
           status: 'success',
           type: 'question',
           driver_number: driverNumber,
-          question: question,
-          answer: answer,
+          question,
+          answer,
           timestamp: new Date().toISOString(),
           source: 'rule-based'
         });
@@ -77,21 +176,49 @@ export default async function handler(req, res) {
     // Initialize OpenAI client
     const openai = new OpenAI({ apiKey });
     
-    // Build context from race data
-    const context = buildRaceContext(raceData, driverNumber);
+    console.log('[Fallback AI] Using OpenAI with formatted context');
     
     if (action === 'summary') {
-      const summary = await generateOpenAISummary(openai, context, driverNumber);
-      return res.status(200).json({
-        status: 'success',
-        type: 'summary',
-        driver_number: driverNumber,
-        summary: summary,
-        timestamp: new Date().toISOString(),
-        source: 'openai-fallback'
-      });
+      if (simple) {
+        const summary = await generateSimpleOpenAISummary(openai, driverName || `Driver #${driverNumber}`, sessionKey);
+        console.log(`[Fallback AI] ✅ Generated simple OpenAI summary (${summary?.length || 0} chars)`);
+        return res.status(200).json({
+          status: 'success',
+          type: 'summary',
+          driver_number: driverNumber,
+          summary: summary,
+          timestamp: new Date().toISOString(),
+          source: 'openai-simple'
+        });
+      } else {
+        const summary = await generateOpenAISummaryFromContext(openai, context, strategicData, driverNumber);
+        console.log(`[Fallback AI] ✅ Generated OpenAI summary (${summary?.length || 0} chars)`);
+        return res.status(200).json({
+          status: 'success',
+          type: 'summary',
+          driver_number: driverNumber,
+          summary: summary,
+          timestamp: new Date().toISOString(),
+          source: 'openai-fallback'
+        });
+      }
     } else {
-      const answer = await answerOpenAIQuestion(openai, question, context, driverNumber);
+      // Intent fast-path even when OpenAI key exists (answer immediately)
+      const fast = answerFromStrategicData(question, strategicData);
+      if (fast) {
+        console.log('[Fallback AI] ⚡ Fast intent answer from strategicData (with key)');
+        return res.status(200).json({
+          status: 'success',
+          type: 'question',
+          driver_number: driverNumber,
+          question,
+          answer: fast,
+          timestamp: new Date().toISOString(),
+          source: 'strategic-fast'
+        });
+      }
+      const answer = await answerOpenAIQuestionFromContext(openai, question, context, strategicData, driverNumber);
+      console.log(`[Fallback AI] ✅ Generated OpenAI answer (${answer?.length || 0} chars)`);
       return res.status(200).json({
         status: 'success',
         type: 'question',
@@ -104,7 +231,7 @@ export default async function handler(req, res) {
     }
 
   } catch (error) {
-    console.error(`[Fallback AI] ❌ Error:`, error);
+    console.error(`[Fallback AI] ❌ OpenAI error:`, error);
     return res.status(500).json({
       error: 'AI analysis failed',
       details: error.message,
@@ -323,4 +450,265 @@ Provide a clear, data-driven answer. Be specific and reference actual data point
     // Fall back to rule-based answer
     return answerQuestion(question, context, driverNumber);
   }
+}
+
+// New functions that use formatted context
+async function generateOpenAISummaryFromContext(openai, formattedContext, strategicData, driverNumber) {
+  const prompt = `You are an expert F1 race strategist. Analyze this race data and provide a strategic summary.
+
+CURRENT RACE DATA:
+${formattedContext}
+
+Provide a concise strategic summary in this EXACT format:
+
+**SITUATION**
+[1-2 sentences describing current race position and performance]
+
+**KEY CONCERNS**
+• [Concern 1]
+• [Concern 2]
+• [Concern 3]
+
+**OPPORTUNITIES**
+• [Opportunity 1]
+• [Opportunity 2]
+
+**IMMEDIATE ACTION**
+[1 sentence with clear actionable recommendation]
+
+Keep it brief and actionable.`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+      max_tokens: 400
+    });
+
+    return response.choices[0].message.content;
+  } catch (error) {
+    console.error('OpenAI summary error:', error);
+    return `Unable to generate summary. Error: ${error.message}`;
+  }
+}
+
+async function answerOpenAIQuestionFromContext(openai, question, formattedContext, strategicData, driverNumber) {
+  const prompt = `You are an expert F1 race strategist. Answer this question based on the race data.
+
+CURRENT RACE DATA:
+${formattedContext}
+
+QUESTION: ${question}
+
+Provide a concise, data-driven answer (2-3 sentences max). Be specific and actionable.`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+      max_tokens: 200
+    });
+
+    return response.choices[0].message.content;
+  } catch (error) {
+    console.error('OpenAI question error:', error);
+    return `Unable to answer question. Error: ${error.message}`;
+  }
+}
+
+// Simple rule-based generation when compact snapshot/formatted context is available
+function generateRuleSummaryFromSnapshot(snapshot, formattedContext, strategicData, driverNumber) {
+  // Heuristic: extract key lines from formatted context
+  const lines = (formattedContext || '').split('\n').map(l => l.trim()).filter(Boolean);
+  const sessionLine = lines.find(l => l.startsWith('**SESSION**')) || '';
+  const driverLine = lines.find(l => l.startsWith('**DRIVER**')) || '';
+  const positionLine = lines.find(l => l.startsWith('**POSITION**')) || '';
+  const strategyLine = lines.find(l => l.startsWith('**STRATEGY RECOMMENDATION**')) || '';
+  const expectedLine = lines.find(l => l.startsWith('**EXPECTED**')) || '';
+  const pitLine = lines.find(l => l.startsWith('**OPTIMAL PIT STOP**')) || '';
+  const riskLine = lines.find(l => l.startsWith('**RISK**')) || '';
+
+  // If snapshot exists, prefer its values
+  const snapSummary = snapshot
+    ? [
+        '**SITUATION**',
+        `${snapshot?.driver?.name || `Driver #${driverNumber}`} in P${snapshot?.status?.position ?? '?'}`,
+        '',
+        '**KEY CONCERNS**',
+        `• Gap to leader: ${snapshot?.status?.gapToLeader ?? 'n/a'}`,
+        `• Interval ahead: ${snapshot?.status?.intervalAhead ?? 'n/a'}`,
+        '',
+        '**OPPORTUNITIES**',
+        snapshot?.status?.lastLapTime ? `• Last lap: ${snapshot.status.lastLapTime}s` : null,
+        snapshot?.status?.bestLapTime ? `• Best: ${snapshot.status.bestLapTime}s` : null,
+        '',
+        '**IMMEDIATE ACTION**',
+        strategyLine ? strategyLine.replace('**STRATEGY RECOMMENDATION**: ', '') : 'Maintain pace and target clean air.'
+      ].filter(Boolean).join('\n')
+    : null;
+
+  if (snapSummary) return snapSummary;
+
+  return [
+    '**SITUATION**',
+    [sessionLine.replace('**SESSION**: ', ''), positionLine.replace('**POSITION**: ', '')].filter(Boolean).join(' — '),
+    '',
+    '**KEY CONCERNS**',
+    riskLine ? `• ${riskLine.replace('**RISK**: ', '')}` : '• Risk unknown',
+    '',
+    '**OPPORTUNITIES**',
+    expectedLine ? `• ${expectedLine.replace('**EXPECTED**: ', '')}` : '• Opportunity not estimated',
+    pitLine ? `• ${pitLine.replace('**OPTIMAL PIT STOP**: ', '')}` : null,
+    '',
+    '**IMMEDIATE ACTION**',
+    strategyLine ? strategyLine.replace('**STRATEGY RECOMMENDATION**: ', '') : 'Hold current plan and monitor gaps and tire temps.'
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function answerRuleFromSnapshot(question, snapshot, formattedContext, strategicData, driverNumber) {
+  const q = (question || '').toLowerCase();
+  const find = (prefix) => (formattedContext || '').split('\n').find(l => l.startsWith(prefix)) || '';
+  const positionLine = find('**POSITION**');
+  const strategyLine = find('**STRATEGY RECOMMENDATION**');
+  const pitLine = find('**OPTIMAL PIT STOP**');
+  const riskLine = find('**RISK**');
+
+  if (q.includes('pit')) {
+    if (snapshot?.status?.inPit) return 'Currently in pit lane. Focus on stop execution and out-lap traffic.';
+    if (pitLine) return `Optimal pit window: ${pitLine.replace('**OPTIMAL PIT STOP**: ', '')}. Balance the call against ${positionLine.replace('**POSITION**: ', '')}.`;
+    return 'Pit timing depends on tire state and gaps. Monitor pace and undercut/overcut windows.';
+  }
+  if (q.includes('risk')) {
+    if (riskLine) return `Risk assessment: ${riskLine.replace('**RISK**: ', '')}. Adjust strategy accordingly.`;
+    if (snapshot?.conditions?.rainfall) return 'Wet track risk present. Increase margins and avoid lockups.';
+    return 'Risk data limited; keep margins, avoid traffic, and protect tire temps.';
+  }
+  if (q.includes('strategy') || q.includes('plan')) {
+    if (strategyLine) return `Recommended strategy: ${strategyLine.replace('**STRATEGY RECOMMENDATION**: ', '')}.`;
+    return 'Maintain consistent pace, protect tire temps, and target clean air.';
+  }
+
+  // Default concise answer
+  const defaults = [
+    snapshot?.status?.position ? `Current P${snapshot.status.position}.` : null,
+    positionLine ? `Current ${positionLine.replace('**POSITION**: ', '')}.` : null,
+    strategyLine ? `Plan: ${strategyLine.replace('**STRATEGY RECOMMENDATION**: ', '')}.` : null,
+    pitLine ? `Pit: ${pitLine.replace('**OPTIMAL PIT STOP**: ', '')}.` : null
+  ].filter(Boolean).join(' ');
+
+  return defaults
+    || 'Data limited; continue current pace and monitor gaps and tire temperatures.';
+}
+
+// Fast deterministic answers using strategicData
+function answerFromStrategicData(question, strategicData) {
+  if (!question || !strategicData) return null;
+  const q = question.toLowerCase();
+  const decision = strategicData?.topDecision?.action;
+  const confidence = strategicData?.topDecision?.confidence;
+  const expected = strategicData?.topDecision?.expectedOutcome;
+  const pitLap = strategicData?.pitWindow?.optimal;
+  const risk = strategicData?.risk?.level;
+
+  if (q.includes('pit')) {
+    if (typeof pitLap !== 'undefined') {
+      return `Optimal pit lap: ${pitLap}. Current recommendation: ${decision || 'N/A'} (${confidence || 0}% confidence).`;
+    }
+  }
+  if (q.includes('strategy') || q.includes('plan')) {
+    if (decision) {
+      return `Recommended strategy: ${decision} (${confidence || 0}% confidence). ${expected ? `Expected outcome: ${expected}.` : ''}`;
+    }
+  }
+  if (q.includes('risk')) {
+    if (risk) {
+      return `Risk level: ${risk}. Adjust margins and avoid traffic until conditions improve.`;
+    }
+  }
+  return null;
+}
+
+// Simple ChatGPT functions for basic F1 strategy responses
+async function generateSimpleOpenAISummary(openai, driverName, sessionKey) {
+  const systemPrompt = `You are an F1 race strategist. Provide a realistic race strategy summary for ${driverName} in session ${sessionKey}. 
+  
+  Focus on:
+  - Current race situation and position
+  - Tire strategy and pit window opportunities  
+  - Key risks and opportunities
+  - Immediate tactical priorities
+  
+  Keep it concise, professional, and realistic. Use F1 terminology.`;
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-3.5-turbo',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Generate a race strategy summary for ${driverName}.` }
+    ],
+    max_tokens: 300,
+    temperature: 0.7
+  });
+
+  return response.choices[0].message.content;
+}
+
+async function generateSimpleOpenAIAnswer(openai, question, driverName, sessionKey) {
+  const systemPrompt = `You are an F1 race strategist. Answer questions about race strategy for ${driverName} in session ${sessionKey}.
+  
+  Provide realistic, professional F1 strategy advice. Use proper F1 terminology.
+  Be concise but informative. Focus on practical race decisions.`;
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-3.5-turbo',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: question }
+    ],
+    max_tokens: 200,
+    temperature: 0.7
+  });
+
+  return response.choices[0].message.content;
+}
+
+function generateSimpleRuleBasedSummary(driverName) {
+  return `**RACE SITUATION**
+${driverName} is currently racing in the session.
+
+**STRATEGY FOCUS**
+• Monitor tire degradation and fuel consumption
+• Watch for optimal pit window opportunities  
+• Maintain consistent lap times
+
+**KEY PRIORITIES**
+• Clean air and track position
+• Tire management for race distance
+• Fuel efficiency for strategy flexibility`;
+}
+
+function generateSimpleRuleBasedAnswer(question, driverName) {
+  const q = question.toLowerCase();
+  
+  if (q.includes('pit') || q.includes('best round') || q.includes('when should')) {
+    return `Optimal pit window typically opens around lap 15-20. Monitor tire degradation and fuel consumption. Consider undercutting competitors if you have pace advantage.`;
+  }
+  
+  if (q.includes('strategy') || q.includes('plan')) {
+    return `Focus on tire management and fuel efficiency. Maintain consistent pace while preserving tires for the race distance. Watch for safety car opportunities.`;
+  }
+  
+  if (q.includes('risk') || q.includes('danger')) {
+    return `Key risks include tire degradation, fuel consumption, and traffic. Maintain safe margins and avoid unnecessary battles that could damage the car.`;
+  }
+  
+  if (q.includes('overtake') || q.includes('pass')) {
+    return `Look for DRS zones and braking opportunities. Ensure you have pace advantage before attempting overtakes. Consider the risk vs reward of each move.`;
+  }
+  
+  return `Based on current race conditions, focus on maintaining consistent pace and managing tires effectively. Monitor fuel consumption and watch for strategic opportunities.`;
 }

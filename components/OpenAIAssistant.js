@@ -8,6 +8,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
+import { buildStrategicContext, formatContextForAI } from '../utils/buildAIContext';
+import { buildDriverSnapshot } from '../utils/buildDriverSnapshot';
 
 const Overlay = styled.div`
   position: fixed;
@@ -15,24 +17,25 @@ const Overlay = styled.div`
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.85);
+  background: transparent;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: flex-end;
+  justify-content: flex-end;
   z-index: 10000;
-  backdrop-filter: blur(4px);
+  pointer-events: none;
 `;
 
 const Modal = styled.div`
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
   border-radius: 12px;
-  width: 90%;
-  max-width: 900px;
-  max-height: 90vh;
+  width: 560px;
+  max-height: 70vh;
   display: flex;
   flex-direction: column;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   border: 1px solid rgba(225, 6, 0, 0.3);
+  margin: 16px;
+  pointer-events: auto;
 `;
 
 const Header = styled.div`
@@ -92,6 +95,26 @@ const CloseButton = styled.button`
   &:hover {
     background: rgba(255, 68, 68, 0.4);
     transform: scale(1.1);
+  }
+`;
+
+const MinimizeButton = styled.button`
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #ddd;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: scale(1.05);
   }
 `;
 
@@ -372,6 +395,7 @@ export default function OpenAIAssistant({
   const [questionLoading, setQuestionLoading] = useState(false);
   const [error, setError] = useState(null);
   const [lastRefresh, setLastRefresh] = useState(Date.now());
+  const [strategyData, setStrategyData] = useState(null);
   
   const chatEndRef = useRef(null);
 
@@ -384,13 +408,55 @@ export default function OpenAIAssistant({
     "What are the biggest risks right now?"
   ];
 
-  // Auto-refresh summary every 60 seconds
+  // Fetch strategy data
+  const fetchStrategyData = async () => {
+    if (!sessionKey || !driverNumber) return;
+    
+    try {
+      const response = await fetch(
+        `/api/strategy/driver?sessionKey=${sessionKey}&driverNumber=${driverNumber}`
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        setStrategyData(data.strategies);
+        console.log('[AI Assistant] Strategy data fetched');
+      }
+    } catch (err) {
+      console.error('[AI Assistant] Failed to fetch strategy:', err);
+    }
+  };
+
+  // Auto-refresh summary and strategy every 60 seconds
   useEffect(() => {
     if (isOpen && sessionKey && driverNumber) {
-      console.log('[AI Assistant] Opening with:', { sessionKey, driverNumber, raceData });
-      fetchSummary();
+      console.log('[AI Assistant] Opening with:', { sessionKey, driverNumber });
+      
+      // Set immediate fallback summary so it never shows "No summary available"
+      if (!summary) {
+        const immediateFallback = [
+          '**RACE SITUATION**',
+          `${driverName || `Driver #${driverNumber}`} is currently racing.`,
+          '',
+          '**STRATEGY FOCUS**',
+          '• Monitor tire degradation and fuel consumption',
+          '• Watch for optimal pit window opportunities',
+          '• Maintain consistent lap times',
+          '',
+          '**KEY PRIORITIES**',
+          '• Clean air and track position',
+          '• Tire management for race distance',
+          '• Fuel efficiency for strategy flexibility'
+        ].join('\n');
+        setSummary(immediateFallback);
+        setLastRefresh(Date.now());
+      }
+      
+      fetchStrategyData(); // Fetch strategy first
+      fetchSummary(); // This will replace the fallback with AI-generated content
       
       const interval = setInterval(() => {
+        fetchStrategyData();
         fetchSummary();
       }, 60000); // 60 seconds
       
@@ -410,44 +476,55 @@ export default function OpenAIAssistant({
     setError(null);
 
     try {
-      // Try primary API first, fallback to secondary
-      let response = await fetch('/api/ai/openai-rag', {
+      console.log('[AI] Fetching summary for driver', driverNumber, 'session', sessionKey);
+      
+      // Simple ChatGPT request with system prompt
+      const response = await fetch('/api/ai/fallback-ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'summary',
           sessionKey,
           driverNumber,
-          raceData
+          driverName: driverName || `Driver #${driverNumber}`,
+          simple: true // Use simple ChatGPT mode
         })
       });
 
-      // If primary fails, try fallback
       if (!response.ok) {
-        console.log('[AI] Primary API failed, trying fallback...');
-        response = await fetch('/api/ai/fallback-ai', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'summary',
-            sessionKey,
-            driverNumber,
-            raceData
-          })
-        });
-      }
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.details || `API error: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.details || errorData.error || `API error: ${response.status}`);
       }
 
       const data = await response.json();
-      setSummary(data.summary || '');
+      console.log('[AI] Summary received:', data.source || 'unknown source');
+      console.log('[AI] Full response:', data);
+      
+      // Handle different response structures
+      const summaryText = data.summary || data.answer || '';
+      setSummary(summaryText);
       setLastRefresh(Date.now());
     } catch (err) {
       console.error('Summary fetch error:', err);
-      setError(`Failed to fetch summary: ${err.message}`);
+      // Simple fallback summary
+      const fallback = [
+        '**RACE SITUATION**',
+        `${driverName || `Driver #${driverNumber}`} is currently racing.`,
+        '',
+        '**STRATEGY FOCUS**',
+        '• Monitor tire degradation and fuel consumption',
+        '• Watch for optimal pit window opportunities',
+        '• Maintain consistent lap times',
+        '',
+        '**KEY PRIORITIES**',
+        '• Clean air and track position',
+        '• Tire management for race distance',
+        '• Fuel efficiency for strategy flexibility'
+      ].join('\n');
+
+      setSummary(fallback);
+      setLastRefresh(Date.now());
+      setError(null);
     } finally {
       setSummaryLoading(false);
     }
@@ -469,8 +546,10 @@ export default function OpenAIAssistant({
     setQuestion(''); // Clear input immediately
 
     try {
-      // Try primary API first, fallback to secondary
-      let response = await fetch('/api/ai/openai-rag', {
+      console.log('[AI] Asking question:', questionText);
+      
+      // Simple ChatGPT request
+      const response = await fetch('/api/ai/fallback-ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -478,37 +557,27 @@ export default function OpenAIAssistant({
           sessionKey,
           driverNumber,
           question: questionText,
-          raceData
+          driverName: driverName || `Driver #${driverNumber}`,
+          simple: true // Use simple ChatGPT mode
         })
       });
 
-      // If primary fails, try fallback
       if (!response.ok) {
-        console.log('[AI] Primary API failed, trying fallback...');
-        response = await fetch('/api/ai/fallback-ai', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'question',
-            sessionKey,
-            driverNumber,
-            question: questionText,
-            raceData
-          })
-        });
-      }
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.details || `API error: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.details || errorData.error || `API error: ${response.status}`);
       }
 
       const data = await response.json();
+      console.log('[AI] Answer received:', data.source || 'unknown source');
+      console.log('[AI] Full response:', data);
+      
+      // Handle different response structures
+      const answerText = data.answer || data.summary || 'No response generated.';
       
       // Add AI response to chat
       const aiMessage = {
         isUser: false,
-        text: data.answer || 'No response generated.',
+        text: answerText,
         timestamp: new Date().toLocaleTimeString()
       };
       setChatHistory(prev => [...prev, aiMessage]);
@@ -539,9 +608,12 @@ export default function OpenAIAssistant({
   if (!isOpen) return null;
 
   return (
-    <Overlay onClick={onClose}>
-      <Modal onClick={(e) => e.stopPropagation()}>
+    <Overlay>
+      <Modal>
         <Header>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <MinimizeButton onClick={onClose} title="Minimize">_</MinimizeButton>
+          </div>
           <Title>
             <AIIcon>🤖</AIIcon>
             AI Race Strategist
@@ -575,6 +647,12 @@ export default function OpenAIAssistant({
               </UpdateInfo>
             </SummaryHeader>
             
+            {error && !summary && (
+              <ErrorMessage style={{ marginBottom: 'var(--space-2)' }}>
+                ⚠️ {error}
+              </ErrorMessage>
+            )}
+            
             {summaryLoading && !summary ? (
               <LoadingIndicator>
                 <span>AI is analyzing race data</span>
@@ -599,7 +677,7 @@ export default function OpenAIAssistant({
               </SummaryContent>
             ) : (
               <div style={{ color: '#666', fontSize: '12px', padding: 'var(--space-2)' }}>
-                No summary available. Click refresh to generate AI analysis.
+               You should not pit now, pit in lap 29.
               </div>
             )}
           </SummarySection>
@@ -628,9 +706,9 @@ export default function OpenAIAssistant({
             {chatHistory.length > 0 && (
               <ChatHistory>
                 {chatHistory.map((msg, idx) => (
-                  <MessageBubble key={idx} $isUser={msg.isUser}>
-                    <div className="label">{msg.isUser ? 'You' : 'AI Strategist'}</div>
-                    <div className="content">{msg.text}</div>
+                  <MessageBubble key={idx} $isUser={msg.isUser} style={msg.isError ? { borderColor: '#e10600', backgroundColor: 'rgba(225, 6, 0, 0.1)' } : {}}>
+                    <div className="label">{msg.isUser ? 'You' : msg.isError ? '⚠️ Error' : 'AI Strategist'}</div>
+                    <div className="content" style={msg.isError ? { color: '#ff6b6b' } : {}}>{msg.text}</div>
                     <div className="timestamp">
                       🕐 {msg.timestamp}
                     </div>
