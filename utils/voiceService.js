@@ -30,6 +30,35 @@ const VoiceService = () => {
       return;
     }
 
+    async function speak(text) {
+        const apiKey = localStorage.getItem("ELEVEN_API_KEY");
+        if (!apiKey) return console.warn("No ElevenLabs API key set.");
+      
+        const response = await fetch("https://api.elevenlabs.io/v1/text-to-speech/<voice_id>", {
+          method: "POST",
+          headers: {
+            "xi-api-key": apiKey,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            text,
+            model_id: "eleven_multilingual_v2",
+            voice_settings: {
+              stability: 0.5,
+              similarity_boost: 0.75,
+            },
+          }),
+        });
+      
+        const audioData = await response.arrayBuffer();
+        const blob = new Blob([audioData], { type: "audio/mpeg" });
+        const url = URL.createObjectURL(blob);
+      
+        const audio = new Audio(url);
+        audio.play();
+      }
+      
+
     try {
       setIsPlaying(true);
       setCurrentText(text);

@@ -1,9 +1,15 @@
 import { useState, useEffect } from "react";
 import VoiceService from "@monaco/utils/voiceService";
+import { ElevenLabsClient } from "elevenlabs";
+
+const client = new ElevenLabsClient({
+  apiKey: process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY || localStorage.getItem("ELEVEN_API_KEY"),
+});
 
 const VoiceControls = ({ onVoiceServiceReady }) => {
   const [showSettings, setShowSettings] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState("");
+  
   const [showApiKeyForm, setShowApiKeyForm] = useState(false);
   
   const voiceService = VoiceService();
@@ -103,6 +109,7 @@ const VoiceControls = ({ onVoiceServiceReady }) => {
                     marginBottom: "6px"
                   }}
                 />
+                
                 <div style={{ display: "flex", gap: "4px" }}>
                   <button
                     type="submit"
