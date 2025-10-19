@@ -112,7 +112,8 @@ export default function PlaybackControls({
   const [isDragging, setIsDragging] = useState(false);
   const progressBarRef = useRef(null);
 
-  const speeds = [0.5, 1, 2, 5, 10];
+  // Cap at 5x for accurate tracking - 10x causes cars to go off track due to interpolation limits
+  const speeds = [0.5, 1, 2, 5];
 
   const handleProgressClick = (e) => {
     if (!progressBarRef.current) return;

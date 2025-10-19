@@ -15,6 +15,21 @@ const Line = styled.li`
 `;
 
 const SpeedTrap = ({ racingNumber, driver, line, statsLine }) => {
+  // Safety checks for missing data
+  const speeds = line?.Speeds || {
+    I1: { Value: 0, OverallFastest: false, PersonalFastest: false },
+    I2: { Value: 0, OverallFastest: false, PersonalFastest: false },
+    FL: { Value: 0, OverallFastest: false, PersonalFastest: false },
+    ST: { Value: 0, OverallFastest: false, PersonalFastest: false },
+  };
+  
+  const bestSpeeds = statsLine?.BestSpeeds || {
+    I1: { Value: 0 },
+    I2: { Value: 0 },
+    FL: { Value: 0 },
+    ST: { Value: 0 },
+  };
+
   return (
     <Line>
       <span
@@ -31,18 +46,18 @@ const SpeedTrap = ({ racingNumber, driver, line, statsLine }) => {
           Lst{" "}
           <span
             style={{
-              color: line.Speeds.I1.OverallFastest
+              color: speeds.I1.OverallFastest
                 ? "magenta"
-                : line.Speeds.I1.PersonalFastest
+                : speeds.I1.PersonalFastest
                 ? "limegreen"
                 : "var(--colour-fg)",
             }}
           >
-            {line.Speeds.I1.Value || "—"} km/h
+            {speeds.I1.Value || "—"} km/h
           </span>
         </p>
         <p>
-          Bst <span>{statsLine.BestSpeeds.I1.Value || "—"} km/h</span>
+          Bst <span>{bestSpeeds.I1.Value || "—"} km/h</span>
         </p>
       </div>
 
@@ -51,18 +66,18 @@ const SpeedTrap = ({ racingNumber, driver, line, statsLine }) => {
           Lst{" "}
           <span
             style={{
-              color: line.Speeds.I2.OverallFastest
+              color: speeds.I2.OverallFastest
                 ? "magenta"
-                : line.Speeds.I2.PersonalFastest
+                : speeds.I2.PersonalFastest
                 ? "limegreen"
                 : "var(--colour-fg)",
             }}
           >
-            {line.Speeds.I2.Value || "—"} km/h
+            {speeds.I2.Value || "—"} km/h
           </span>
         </p>
         <p>
-          Bst <span>{statsLine.BestSpeeds.I2.Value || "—"} km/h</span>
+          Bst <span>{bestSpeeds.I2.Value || "—"} km/h</span>
         </p>
       </div>
 
@@ -71,18 +86,18 @@ const SpeedTrap = ({ racingNumber, driver, line, statsLine }) => {
           Lst{" "}
           <span
             style={{
-              color: line.Speeds.FL.OverallFastest
+              color: speeds.FL.OverallFastest
                 ? "magenta"
-                : line.Speeds.FL.PersonalFastest
+                : speeds.FL.PersonalFastest
                 ? "limegreen"
                 : "var(--colour-fg)",
             }}
           >
-            {line.Speeds.FL.Value || "—"} km/h
+            {speeds.FL.Value || "—"} km/h
           </span>
         </p>
         <p>
-          Bst <span>{statsLine.BestSpeeds.FL.Value || "—"} km/h</span>
+          Bst <span>{bestSpeeds.FL.Value || "—"} km/h</span>
         </p>
       </div>
 
@@ -91,18 +106,18 @@ const SpeedTrap = ({ racingNumber, driver, line, statsLine }) => {
           Lst{" "}
           <span
             style={{
-              color: line.Speeds.ST.OverallFastest
+              color: speeds.ST.OverallFastest
                 ? "magenta"
-                : line.Speeds.ST.PersonalFastest
+                : speeds.ST.PersonalFastest
                 ? "limegreen"
                 : "var(--colour-fg)",
             }}
           >
-            {line.Speeds.ST.Value || "—"} km/h
+            {speeds.ST.Value || "—"} km/h
           </span>
         </p>
         <p>
-          Bst <span>{statsLine.BestSpeeds.ST.Value || "—"} km/h</span>
+          Bst <span>{bestSpeeds.ST.Value || "—"} km/h</span>
         </p>
       </div>
     </Line>

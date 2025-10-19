@@ -9,6 +9,7 @@ import Input from "@monaco/components/Input";
 import SpeedTrap, { speedTrapColumns } from "@monaco/components/SpeedTrap";
 import SessionBrowser from "@monaco/components/SessionBrowser";
 import PlaybackControls from "@monaco/components/PlaybackControls";
+import PitLane from "@monaco/components/PitLane";
 import { buildTimeline, ReplayEngine } from "@monaco/utils/replayEngine";
 import sessionCache from "@monaco/utils/sessionCache";
 import { fetchJSON } from "@monaco/utils/apiClient";
@@ -288,12 +289,12 @@ export default function Home() {
         quality, // User-selected: 'LOW', 'MEDIUM', 'HIGH', 'ULTRA'
       });
 
-      // Create replay engine with time compression
-      // Time compression makes the replay run faster than real-time
-      // 100x means a 2-hour race plays in ~72 seconds
+      // Create replay engine with real-time playback
+      // timeCompression: 1 means 1x speed = real-time
+      // User can then adjust with speed controls (0.5x, 1x, 2x, 5x, 10x)
       const engine = new ReplayEngine(timeline, {
         playbackSpeed: 1,
-        timeCompression: 100, // 100x faster than real-time
+        timeCompression: 1, // 1x = real-time (user can speed up with controls)
         onStateUpdate: (state) => {
           setReplayState(state);
           setUpdated(new Date());
@@ -575,6 +576,7 @@ export default function Home() {
     CarData,
     Position,
     TeamRadio,
+    PitStops,
   } = currentState;
 
   if (!Heartbeat && mode === "live")
@@ -929,6 +931,15 @@ export default function Home() {
               >
                 <p>NO DATA YET</p>
               </div>
+            )}
+            
+            {/* Pit Lane Sidebar - shows cars currently in the pit */}
+            {mode === "replay" && PitStops && (
+              <PitLane 
+                pitStops={PitStops}
+                driverList={DriverList}
+                currentTime={currentTime}
+              />
             )}
           </div>
 

@@ -296,6 +296,28 @@ export function transformTimingData(positions, drivers, laps) {
       LastLapTime: {
         Value: lastLap?.lap_duration || 0,
       },
+      Speeds: {
+        I1: {
+          Value: lastLap?.i1_speed || 0,
+          OverallFastest: false,
+          PersonalFastest: false,
+        },
+        I2: {
+          Value: lastLap?.i2_speed || 0,
+          OverallFastest: false,
+          PersonalFastest: false,
+        },
+        FL: {
+          Value: lastLap?.st_speed || 0, // Using ST speed as FL (finish line)
+          OverallFastest: false,
+          PersonalFastest: false,
+        },
+        ST: {
+          Value: lastLap?.st_speed || 0,
+          OverallFastest: false,
+          PersonalFastest: false,
+        },
+      },
     };
   });
 
@@ -330,11 +352,13 @@ export function transformTimingStats(laps, drivers) {
     // Find best speeds from laps
     let bestI1Speed = 0;
     let bestI2Speed = 0;
+    let bestFLSpeed = 0; // Finish line speed
     let bestSTSpeed = 0;
     
     driverLaps.forEach(lap => {
       if (lap.i1_speed && lap.i1_speed > bestI1Speed) bestI1Speed = lap.i1_speed;
       if (lap.i2_speed && lap.i2_speed > bestI2Speed) bestI2Speed = lap.i2_speed;
+      if (lap.st_speed && lap.st_speed > bestFLSpeed) bestFLSpeed = lap.st_speed; // Use ST as FL
       if (lap.st_speed && lap.st_speed > bestSTSpeed) bestSTSpeed = lap.st_speed;
     });
     
@@ -343,6 +367,7 @@ export function transformTimingStats(laps, drivers) {
       BestSpeeds: {
         I1: { Value: bestI1Speed || 0 },
         I2: { Value: bestI2Speed || 0 },
+        FL: { Value: bestFLSpeed || 0 }, // Finish line
         ST: { Value: bestSTSpeed || 0 },
       },
       PersonalBestLapTime: driverLaps.length > 0 
@@ -356,6 +381,27 @@ export function transformTimingStats(laps, drivers) {
   return {
     Lines: lines,
   };
+}
+
+/**
+ * Transform pit stops data
+ * @param {Array} pitStops - OpenF1 pit stops data
+ * @returns {Array} Pit stops with proper format
+ */
+export function transformPitStops(pitStops) {
+  if (!pitStops || pitStops.length === 0) {
+    return [];
+  }
+  
+  // OpenF1 pit data is already in a good format, just ensure consistency
+  return pitStops.map(pit => ({
+    date: pit.date,
+    driver_number: pit.driver_number,
+    lap_number: pit.lap_number,
+    pit_duration: pit.pit_duration,
+    meeting_key: pit.meeting_key,
+    session_key: pit.session_key,
+  }));
 }
 
 /**
@@ -375,6 +421,7 @@ export function transformCompleteSession(openf1Data) {
     carData,
     laps,
     positions,
+    pitStops,
     raceControl,
     intervals,
     weather,
@@ -391,6 +438,7 @@ export function transformCompleteSession(openf1Data) {
     TimingAppData: {
       Lines: {}, // Not available in OpenF1
     },
+    PitStops: transformPitStops(pitStops), // Pit lane data
     
     // Time-series data
     Position: transformLocation(locationData),
@@ -442,6 +490,7 @@ export default {
   transformSessionInfo,
   transformTimingData,
   transformTimingStats,
+  transformPitStops,
   transformCompleteSession,
 };
 

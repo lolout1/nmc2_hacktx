@@ -270,20 +270,23 @@ export class ReplayEngine {
       }
     });
     
-    // Process the first CarData and Position events to get initial display state
-    // This ensures UI has data to render immediately, but doesn't advance playback
-    let foundCarData = false;
-    let foundPosition = false;
+    // Skip initial empty period - find first meaningful data (first 10 position updates)
+    // This avoids the "clunky start" where nothing is moving yet
+    let positionCount = 0;
+    const INITIAL_POSITIONS_TO_LOAD = 10; // Load first 10 position updates for smoother start
     
-    for (let i = 0; i < this.timeline.length && (!foundCarData || !foundPosition); i++) {
+    for (let i = 0; i < this.timeline.length; i++) {
       const event = this.timeline[i];
       if (!event.static) {
-        if (!foundCarData && event.feed === "CarData") {
+        if (event.feed === "Position") {
           this.processEvent(event);
-          foundCarData = true;
-        } else if (!foundPosition && event.feed === "Position") {
+          positionCount++;
+          if (positionCount >= INITIAL_POSITIONS_TO_LOAD) {
+            break;
+          }
+        } else if (event.feed === "CarData" && positionCount < INITIAL_POSITIONS_TO_LOAD) {
+          // Also load car data alongside positions
           this.processEvent(event);
-          foundPosition = true;
         }
       }
     }
@@ -574,7 +577,32 @@ export class ReplayEngine {
    * Set playback speed (1 = normal, 2 = 2x, etc.)
    */
   setSpeed(speed) {
+    // When changing speed, we need to reset the timing reference
+    // to avoid jumps or weird behavior
+    const wasPlaying = this.isPlaying;
+    
+    if (wasPlaying) {
+      this.pause();
+    }
+    
     this.playbackSpeed = speed;
+    
+    // Reset timing references for smooth transition
+    this.startTime = Date.now();
+    
+    // Calculate where we should be in session time
+    if (this.timeline.length > 0 && this.currentIndex > 0) {
+      const currentEvent = this.timeline[this.currentIndex];
+      if (currentEvent) {
+        this.sessionStartTime = currentEvent.timestamp;
+      }
+    }
+    
+    if (wasPlaying) {
+      this.play();
+    }
+    
+    console.log(`[Replay] Speed changed to ${speed}x`);
   }
 
   /**

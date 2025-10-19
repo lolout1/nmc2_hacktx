@@ -190,16 +190,47 @@ export default async function handler(req, res) {
     
     console.log(`[API OpenF1] Total location data points: ${locationData.length}`);
     
-    // Car data (telemetry) - this might not be available for all sessions
-    console.log('[API OpenF1] Fetching car data (optional)...');
-    const carData = await fetchOpenF1('car_data', { session_key: sessionKey }).catch(err => {
-      console.warn('[API OpenF1] Car data not available:', err.message);
-      return [];
-    });
-    await delay(500);
+    // Car data (telemetry: gear, RPM, speed, throttle, brake, DRS)
+    // Fetch in chunks like location data to avoid rate limits
+    console.log('[API OpenF1] Fetching car data (telemetry - chunked)...');
+    const carData = [];
+    currentStart = sessionStart; // Reset to session start
+    
+    while (currentStart < sessionEnd) {
+      const currentEnd = new Date(Math.min(currentStart.getTime() + chunkSizeMs, sessionEnd.getTime()));
+      
+      try {
+        const params = {
+          session_key: sessionKey,
+        };
+        params[`date>${currentStart.toISOString()}`] = '';
+        params[`date<${currentEnd.toISOString()}`] = '';
+        
+        const chunk = await fetchOpenF1('car_data', params).catch(err => {
+          console.warn(`[API OpenF1] Car data chunk failed: ${err.message}`);
+          return [];
+        });
+        
+        if (chunk && chunk.length > 0) {
+          carData.push(...chunk);
+          console.log(`[API OpenF1] ✓ Fetched ${chunk.length} car data points (total: ${carData.length})`);
+        }
+        
+        await delay(500); // Rate limit protection
+      } catch (err) {
+        console.error(`[API OpenF1] Car data chunk failed for ${currentStart.toISOString()}:`, err.message);
+      }
+      
+      currentStart = currentEnd;
+    }
+    
+    console.log(`[API OpenF1] Total car data points: ${carData.length}`);
     
     // Optional data
     console.log('[API OpenF1] Fetching optional data...');
+    const pitStops = await fetchOpenF1('pit', { session_key: sessionKey }).catch(() => []);
+    await delay(500);
+    
     const raceControl = await fetchOpenF1('race_control', { session_key: sessionKey }).catch(() => []);
     await delay(500);
     
@@ -214,6 +245,7 @@ export default async function handler(req, res) {
       carData: carData.length,
       laps: laps.length,
       positions: positions.length,
+      pitStops: pitStops.length,
       raceControl: raceControl.length,
       intervals: intervals.length,
       weather: weather.length,
@@ -228,6 +260,7 @@ export default async function handler(req, res) {
       carData,
       laps,
       positions,
+      pitStops,
       raceControl,
       intervals,
       weather,

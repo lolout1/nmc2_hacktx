@@ -218,8 +218,36 @@ def fetch_session_data(session_key: int, output_dir: str):
     save_to_csv(positions, f'session_{session_key}_positions.csv', output_dir)
     time.sleep(REQUEST_DELAY)
     
-    # 6. Fetch location data in chunks (requires date filters)
-    print("\n[6/9] Fetching location data (chunked)...")
+    # 6. Fetch car_data in chunks (telemetry: gear, RPM, speed, throttle, brake, DRS)
+    print("\n[6/10] Fetching car_data (telemetry - chunked)...")
+    car_data = []
+    
+    # Fetch in 5-minute chunks (same as location data)
+    current_start = session_start
+    chunk_num = 1
+    
+    while current_start < session_end:
+        current_end = min(current_start + chunk_size, session_end)
+        
+        print(f"  Chunk {chunk_num}: {current_start.strftime('%H:%M')} - {current_end.strftime('%H:%M')}")
+        
+        params = {
+            'session_key': session_key,
+            f'date>{current_start.isoformat()}': None,
+            f'date<{current_end.isoformat()}': None,
+        }
+        
+        chunk_data = fetch_api('car_data', params)
+        car_data.extend(chunk_data)
+        
+        current_start = current_end
+        chunk_num += 1
+        time.sleep(REQUEST_DELAY)
+    
+    save_to_csv(car_data, f'session_{session_key}_car_data.csv', output_dir)
+    
+    # 7. Fetch location data in chunks (requires date filters)
+    print("\n[7/10] Fetching location data (chunked)...")
     location_data = []
     
     session_start = datetime.fromisoformat(session_info['date_start'].replace('Z', '+00:00'))
@@ -254,20 +282,26 @@ def fetch_session_data(session_key: int, output_dir: str):
     
     save_to_csv(location_data, f'session_{session_key}_location.csv', output_dir)
     
-    # 7. Fetch race control
-    print("\n[7/9] Fetching race control...")
+    # 8. Fetch pit stops
+    print("\n[8/11] Fetching pit stops...")
+    pit_stops = fetch_api('pit', {'session_key': session_key})
+    save_to_csv(pit_stops, f'session_{session_key}_pit.csv', output_dir)
+    time.sleep(REQUEST_DELAY)
+    
+    # 9. Fetch race control
+    print("\n[9/11] Fetching race control...")
     race_control = fetch_api('race_control', {'session_key': session_key})
     save_to_csv(race_control, f'session_{session_key}_race_control.csv', output_dir)
     time.sleep(REQUEST_DELAY)
     
-    # 8. Fetch weather
-    print("\n[8/9] Fetching weather...")
+    # 10. Fetch weather
+    print("\n[10/11] Fetching weather...")
     weather = fetch_api('weather', {'session_key': session_key})
     save_to_csv(weather, f'session_{session_key}_weather.csv', output_dir)
     time.sleep(REQUEST_DELAY)
     
-    # 9. Fetch intervals (may not be available for all sessions)
-    print("\n[9/9] Fetching intervals...")
+    # 11. Fetch intervals (may not be available for all sessions)
+    print("\n[11/11] Fetching intervals...")
     intervals = fetch_api('intervals', {'session_key': session_key})
     if intervals:
         save_to_csv(intervals, f'session_{session_key}_intervals.csv', output_dir)
@@ -281,9 +315,11 @@ def fetch_session_data(session_key: int, output_dir: str):
         'fetched_at': datetime.utcnow().isoformat(),
         'stats': {
             'drivers': len(drivers),
+            'car_data': len(car_data),
             'location': len(location_data),
             'laps': len(laps),
             'positions': len(positions),
+            'pit_stops': len(pit_stops),
             'race_control': len(race_control),
             'weather': len(weather),
             'intervals': len(intervals),
@@ -301,9 +337,11 @@ def fetch_session_data(session_key: int, output_dir: str):
     print(f"{'='*60}")
     print(f"\nSummary:")
     print(f"  Drivers: {len(drivers)}")
+    print(f"  Car data (telemetry): {len(car_data)}")
     print(f"  Location points: {len(location_data)} (deduplicated)")
     print(f"  Laps: {len(laps)}")
     print(f"  Positions: {len(positions)}")
+    print(f"  Pit stops: {len(pit_stops)}")
     print(f"  Race control: {len(race_control)}")
     print(f"  Weather: {len(weather)}")
     print(f"  Intervals: {len(intervals)}")

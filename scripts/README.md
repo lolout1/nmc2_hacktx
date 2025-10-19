@@ -4,12 +4,13 @@ Python script to fetch and cache F1 session data from api.openf1.org
 
 ## Features
 
-- ✅ Fetches all endpoints (drivers, location, laps, positions, race control, weather)
+- ✅ Fetches all endpoints (drivers, car_data, location, laps, positions, race control, weather)
+- ✅ **Car telemetry**: Gear, RPM, speed, throttle, brake, DRS (~3.7Hz sample rate)
 - ✅ Intelligent deduplication (removes duplicate X,Y,Z coordinates)
 - ✅ Rate limiting protection (500ms delays, exponential backoff)
 - ✅ Saves to CSV files for easy processing
 - ✅ Includes metadata JSON with session info
-- ✅ Chunked location data fetching (5-minute intervals)
+- ✅ Chunked fetching (5-minute intervals) for location and car_data
 
 ## Requirements
 
@@ -51,6 +52,7 @@ The script creates these files in the output directory (default: `.openf1_cache/
 ```
 .openf1_cache/
 ├── session_9161_drivers.csv          # Driver information
+├── session_9161_car_data.csv         # 🆕 Telemetry: gear, RPM, speed, throttle, brake, DRS
 ├── session_9161_location.csv         # X,Y,Z coordinates (deduplicated!)
 ├── session_9161_laps.csv             # Lap times and sectors
 ├── session_9161_positions.csv        # Race positions over time
@@ -77,7 +79,14 @@ Output directory: ./.openf1_cache
 [2/9] Fetching meeting info...
   ...
 
-[6/9] Fetching location data (chunked)...
+[6/10] Fetching car_data (telemetry - chunked)...
+  Chunk 1: 13:00 - 13:05
+  ✓ Received 23000 items
+  Chunk 2: 13:05 - 13:10
+  ✓ Received 22800 items
+  ...
+
+[7/10] Fetching location data (chunked)...
   Chunk 1: 13:00 - 13:05
   Fetching: https://api.openf1.org/v1/location?session_key=9161&date>...
   ✓ Received 23100 items
@@ -100,6 +109,7 @@ Output directory: ./.openf1_cache
 
 Summary:
   Drivers: 20
+  Car data (telemetry): 270000
   Location points: 13671 (deduplicated)
   Laps: 297
   Positions: 1145
