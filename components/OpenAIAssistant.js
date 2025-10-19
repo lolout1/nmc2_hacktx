@@ -230,19 +230,24 @@ const ChatHistory = styled.div`
 const MessageBubble = styled.div`
   padding: var(--space-3);
   border-radius: 8px;
-  background: ${props => props.$isUser 
-    ? 'rgba(225, 6, 0, 0.12)' 
+  background: ${props => props.$isUser
+    ? 'rgba(225, 6, 0, 0.12)'
     : 'rgba(0, 191, 255, 0.10)'};
   border-left: 3px solid ${props => props.$isUser ? '#e10600' : '#00bfff'};
-  
+  min-height: 60px;
+  width: 100%;
+  box-sizing: border-box;
+
   .content {
     margin: 0;
     font-size: 13px;
     line-height: 1.6;
     color: var(--colour-fg);
     white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
   }
-  
+
   .timestamp {
     font-size: 10px;
     color: #666;
@@ -251,7 +256,7 @@ const MessageBubble = styled.div`
     align-items: center;
     gap: 4px;
   }
-  
+
   .label {
     font-weight: 700;
     color: ${props => props.$isUser ? '#e10600' : '#00bfff'};
@@ -399,6 +404,14 @@ export default function OpenAIAssistant({
   
   const chatEndRef = useRef(null);
 
+  // Component lifecycle logging
+  useEffect(() => {
+    console.log('[AI] 🎨 Component MOUNTED');
+    return () => {
+      console.log('[AI] 💀 Component UNMOUNTED');
+    };
+  }, []);
+
   // Quick questions
   const quickQuestions = [
     "Should we pit now?",
@@ -463,6 +476,12 @@ export default function OpenAIAssistant({
       return () => clearInterval(interval);
     }
   }, [isOpen, sessionKey, driverNumber]);
+
+  // Track chatHistory changes
+  useEffect(() => {
+    console.log('[AI] 📊 chatHistory changed! New length:', chatHistory.length);
+    console.log('[AI] 📊 Chat contents:', chatHistory);
+  }, [chatHistory]);
 
   // Scroll to bottom of chat
   useEffect(() => {
@@ -533,8 +552,15 @@ export default function OpenAIAssistant({
   };
 
   const askQuestion = async (questionText = question) => {
-    if (!questionText.trim() || !sessionKey || !driverNumber) return;
+    console.log('[AI] 🔥 askQuestion called with:', questionText);
+    console.log('[AI] 🔥 Current chatHistory length:', chatHistory.length);
 
+    if (!questionText.trim() || !sessionKey || !driverNumber) {
+      console.log('[AI] ❌ Validation failed:', { questionText: questionText.trim(), sessionKey, driverNumber });
+      return;
+    }
+
+    console.log('[AI] ✅ Validation passed, proceeding...');
     setQuestionLoading(true);
     setError(null);
 
@@ -544,7 +570,12 @@ export default function OpenAIAssistant({
       text: questionText,
       timestamp: new Date().toLocaleTimeString()
     };
-    setChatHistory(prev => [...prev, userMessage]);
+    console.log('[AI] 👤 Adding user message to chat:', userMessage);
+    setChatHistory(prev => {
+      const updated = [...prev, userMessage];
+      console.log('[AI] 👤 Updated chat history (with user msg) length:', updated.length);
+      return updated;
+    });
     setQuestion(''); // Clear input immediately
 
     try {
@@ -584,7 +615,12 @@ export default function OpenAIAssistant({
         text: answerText,
         timestamp: new Date().toLocaleTimeString()
       };
-      setChatHistory(prev => [...prev, aiMessage]);
+      console.log('[AI] 📨 Adding AI message to chat:', aiMessage);
+      setChatHistory(prev => {
+        const updated = [...prev, aiMessage];
+        console.log('[AI] 📊 Updated chat history length:', updated.length);
+        return updated;
+      });
       
     } catch (err) {
       console.error('Question error:', err);
@@ -610,6 +646,8 @@ export default function OpenAIAssistant({
   };
 
   if (!isOpen) return null;
+
+  console.log('[AI] 🎬 Rendering with chatHistory.length:', chatHistory.length);
 
   return (
     <Overlay>
@@ -689,7 +727,7 @@ export default function OpenAIAssistant({
               </SummaryContent>
             ) : (
               <div style={{ color: '#666', fontSize: '12px', padding: 'var(--space-2)' }}>
-               You should not pit now, pit in lap 29.
+                No summary available yet. Click refresh to generate.
               </div>
             )}
           </SummarySection>
@@ -704,8 +742,8 @@ export default function OpenAIAssistant({
             {chatHistory.length === 0 && (
               <QuickQuestions>
                 {quickQuestions.map((q, idx) => (
-                  <QuickButton 
-                    key={idx} 
+                  <QuickButton
+                    key={idx}
                     onClick={() => askQuestion(q)}
                     disabled={questionLoading}
                   >
@@ -714,36 +752,42 @@ export default function OpenAIAssistant({
                 ))}
               </QuickQuestions>
             )}
-            
-            {chatHistory.length > 0 && (
-              <ChatHistory>
-                {chatHistory.map((msg, idx) => (
-                  <MessageBubble key={idx} $isUser={msg.isUser} style={msg.isError ? { borderColor: '#e10600', backgroundColor: 'rgba(225, 6, 0, 0.1)' } : {}}>
-                    <div className="label">{msg.isUser ? 'You' : msg.isError ? '⚠️ Error' : 'AI Strategist'}</div>
-                    <div className="content" style={msg.isError ? { color: '#ff6b6b' } : {}}>
-                      {/* Format ChatGPT responses with basic markdown support */}
-                      {msg.text.split('\n').map((line, i) => {
-                        if (line.includes('**')) {
-                          const parts = line.split('**');
-                          return (
-                            <div key={i}>
-                              {parts.map((part, j) =>
-                                j % 2 === 1 ? <strong key={j} style={{ color: msg.isUser ? '#e10600' : '#00bfff' }}>{part}</strong> : part
-                              )}
-                            </div>
-                          );
-                        }
-                        return <div key={i}>{line}</div>;
-                      })}
-                    </div>
-                    <div className="timestamp">
-                      🕐 {msg.timestamp}
-                    </div>
-                  </MessageBubble>
-                ))}
-                <div ref={chatEndRef} />
-              </ChatHistory>
-            )}
+
+            {chatHistory.length > 0 && (() => {
+              console.log('[AI] 💬 Rendering chat history with', chatHistory.length, 'messages');
+              chatHistory.forEach((msg, idx) => {
+                console.log(`[AI] Message ${idx}:`, msg.isUser ? 'USER' : 'AI', msg.text.substring(0, 50) + '...');
+              });
+              return (
+                <ChatHistory>
+                  {chatHistory.map((msg, idx) => (
+                    <MessageBubble key={idx} $isUser={msg.isUser} style={msg.isError ? { borderColor: '#e10600', backgroundColor: 'rgba(225, 6, 0, 0.1)' } : {}}>
+                      <div className="label">{msg.isUser ? 'You' : msg.isError ? '⚠️ Error' : 'AI Strategist'}</div>
+                      <div className="content" style={msg.isError ? { color: '#ff6b6b' } : {}}>
+                        {/* Format ChatGPT responses with basic markdown support */}
+                        {msg.text.split('\n').map((line, i) => {
+                          if (line.includes('**')) {
+                            const parts = line.split('**');
+                            return (
+                              <div key={i}>
+                                {parts.map((part, j) =>
+                                  j % 2 === 1 ? <strong key={j} style={{ color: msg.isUser ? '#e10600' : '#00bfff' }}>{part}</strong> : part
+                                )}
+                              </div>
+                            );
+                          }
+                          return <div key={i}>{line}</div>;
+                        })}
+                      </div>
+                      <div className="timestamp">
+                        🕐 {msg.timestamp}
+                      </div>
+                    </MessageBubble>
+                  ))}
+                  <div ref={chatEndRef} />
+                </ChatHistory>
+              );
+            })()}
             
             {error && <ErrorMessage>⚠️ {error}</ErrorMessage>}
             
