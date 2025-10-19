@@ -14,6 +14,7 @@ import RaceControlSidebar from "@monaco/components/RaceControlSidebar";
 import MLPredictions from "@monaco/components/MLPredictions";
 import StrategyFocusSelector from "@monaco/components/StrategyFocusSelector";
 import StrategyCommandCenter from "@monaco/components/StrategyCommandCenter";
+import BettingSidebar from "@monaco/components/BettingSidebar";
 import { buildTimeline, ReplayEngine } from "@monaco/utils/replayEngine";
 import sessionCache from "@monaco/utils/sessionCache";
 import { fetchJSON } from "@monaco/utils/apiClient";
@@ -737,6 +738,21 @@ export default function Home() {
                   >
                     📚 BROWSE HISTORY
                   </button>
+                  <a
+                    href="/betting"
+                    style={{
+                      marginRight: "var(--space-4)",
+                      padding: "8px 16px",
+                      backgroundColor: "#00ff88",
+                      color: "#000",
+                      textDecoration: "none",
+                      borderRadius: "6px",
+                      fontSize: "14px",
+                      fontWeight: "600"
+                    }}
+                  >
+                    🎯 BETTING
+                  </a>
                 </>
               ) : (
                 <p style={{ color: "orange", marginRight: "var(--space-4)" }}>
@@ -1124,6 +1140,15 @@ export default function Home() {
             )}
           </div>
         </ResponsiveTable>
+
+        {/* Betting Sidebar - only show in live mode */}
+        {mode === "live" && DriverList && TimingData && (
+          <BettingSidebar
+            driverList={DriverList}
+            timingData={TimingData}
+            sessionInfo={SessionInfo}
+          />
+        )}
 
         <p
           style={{ color: "grey", padding: "var(--space-3)", fontSize: "11px", marginBottom: mode === "replay" ? "120px" : "0" }}
