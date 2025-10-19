@@ -32,3 +32,6 @@ yarn-error.log*
 .vercel
 
 .idea
+
+# OpenF1 API cache (CSV files)
+.openf1_cache/

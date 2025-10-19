@@ -12,6 +12,7 @@ import PlaybackControls from "@monaco/components/PlaybackControls";
 import { buildTimeline, ReplayEngine } from "@monaco/utils/replayEngine";
 import sessionCache from "@monaco/utils/sessionCache";
 import { fetchJSON } from "@monaco/utils/apiClient";
+import { transformCompleteSession } from "@monaco/utils/openf1Transformer";
 
 const f1Url = "https://livetiming.formula1.com";
 
@@ -132,73 +133,60 @@ export default function Home() {
     socket.current = ws;
   };
 
-  // Initialize replay mode with historical data
+  // Initialize replay mode with historical data from OpenF1
   const initReplayMode = async (sessionInfo) => {
     setLoadingReplay(true);
     try {
       let data;
 
-      // Check cache first
-      if (sessionCache.has(sessionInfo.sessionPath)) {
-        console.log("Loading session from cache:", sessionInfo.sessionPath);
-        data = sessionCache.get(sessionInfo.sessionPath);
+      const cacheKey = `openf1_${sessionInfo.sessionKey}`;
+
+      // Check cache first and validate it has location data
+      if (sessionCache.has(cacheKey)) {
+        console.log("[OpenF1] Found cached session:", sessionInfo.sessionKey);
+        const cachedData = sessionCache.get(cacheKey);
         
-        // Validate cached data - if CarData is a string or missing Entries array, it's old format
-        if (data.CarData && typeof data.CarData === "string") {
-          console.warn("Cached data has old format (compressed string), refetching...");
-          sessionCache.remove(sessionInfo.sessionPath);
+        // Validate cached data has location data
+        if (cachedData?.Position?.Position?.length > 0) {
+          console.log("[OpenF1] Cache valid with", cachedData.Position.Position.length, "position snapshots");
+          data = cachedData;
+        } else {
+          console.warn("[OpenF1] Cache invalid (no position data), refetching...");
+          sessionCache.remove(cacheKey);
           data = null;
-        } else if (data.CarData && !data.CarData.Entries) {
-          console.warn("Cached data missing Entries array (old structure), refetching...");
-          sessionCache.remove(sessionInfo.sessionPath);
-          data = null;
-        } else if (data.Position && data.Position.Position && data.Position.Position.length <= 2) {
-          console.warn("Cached data has limited position snapshots (possibly old/incomplete data), refetching...");
-          sessionCache.remove(sessionInfo.sessionPath);
-          data = null;
-        } else if (data.Position && data.Position.Position && data.Position.Position.length >= 2) {
-          // Check if cached positions are all identical (placeholder data)
-          const pos1 = data.Position.Position[0];
-          const pos2 = data.Position.Position[1];
-          if (pos1?.Entries && pos2?.Entries) {
-            const firstDriver = Object.keys(pos1.Entries)[0];
-            const coord1 = pos1.Entries[firstDriver];
-            const coord2 = pos2.Entries[firstDriver];
-            const distance = Math.sqrt(
-              Math.pow((coord2?.X || 0) - (coord1?.X || 0), 2) +
-              Math.pow((coord2?.Y || 0) - (coord1?.Y || 0), 2)
-            );
-            if (distance < 1) {
-              console.warn("Cached data has static position coordinates (placeholder data), marking as invalid");
-              sessionCache.remove(sessionInfo.sessionPath);
-              data = null;
-            }
-          }
         }
       }
       
       if (!data) {
-        console.log("Fetching session from API:", sessionInfo.sessionPath);
+        console.log("[OpenF1] Fetching session from API:", sessionInfo.sessionKey);
         
-        // Fetch historical session data with retry logic
+        // Fetch OpenF1 session data with retry logic
+        // Sequential fetching with delays takes longer, so we need a longer timeout
         const responseData = await fetchJSON(
-          `/api/sessions/data?sessionPath=${encodeURIComponent(sessionInfo.sessionPath)}`,
+          `/api/openf1/session-data?sessionKey=${sessionInfo.sessionKey}`,
           {},
           {
-            maxRetries: 3,
-            timeout: 60000, // 60 second timeout for large sessions
+            maxRetries: 2,
+            timeout: 180000, // 180 second timeout (3 minutes) for OpenF1 sequential data fetching
             onRetry: (attempt, maxRetries, delay) => {
-              console.log(`Retry ${attempt}/${maxRetries} in ${Math.round(delay)}ms`);
+              console.log(`[OpenF1] Retry ${attempt}/${maxRetries} in ${Math.round(delay)}ms`);
             },
           }
         );
         
-        data = responseData.data;
+        // Transform OpenF1 data to Monaco format
+        console.log("[OpenF1] Transforming data to Monaco format");
+        data = transformCompleteSession(responseData.data);
 
-        // Cache the data for future use
-        sessionCache.set(sessionInfo.sessionPath, data);
-      } else if (data) {
-        console.log("Using cached data");
+        // Only cache if we have valid location data
+        if (data?.Position?.Position?.length > 0) {
+          console.log("[OpenF1] Caching session with", data.Position.Position.length, "position snapshots");
+          sessionCache.set(cacheKey, data);
+        } else {
+          console.warn("[OpenF1] Not caching - insufficient position data");
+        }
+      } else {
+        console.log("[OpenF1] Using cached data");
       }
 
       // Debug: Check what data we received

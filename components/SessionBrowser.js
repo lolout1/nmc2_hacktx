@@ -133,48 +133,61 @@ const SessionType = styled.span`
 `;
 
 export default function SessionBrowser({ onSelectSession, onBack }) {
-  // Default to 2024 - most recent year with complete historical data
-  // Future years may have placeholder/incomplete data
-  const currentYear = new Date().getFullYear();
-  const defaultYear = currentYear > 2024 ? 2024 : currentYear;
-  
-  const [year, setYear] = useState(defaultYear);
   const [meetings, setMeetings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandedMeeting, setExpandedMeeting] = useState(null);
   const [interpolationQuality, setInterpolationQuality] = useState('HIGH');
 
-  // Only show years up to 2024 (last year with complete historical data)
-  // Future years may have placeholder/test data
-  const maxYear = Math.min(new Date().getFullYear(), 2024);
-  const availableYears = Array.from(
-    { length: maxYear - 2017 },
-    (_, i) => 2018 + i
-  ).reverse();
-
   useEffect(() => {
     fetchSessions();
-  }, [year]);
+  }, []);
 
   const fetchSessions = async () => {
     setLoading(true);
     setError(null);
     try {
+      // Fetch OpenF1 sessions
       const data = await fetchJSON(
-        `/api/sessions/list?year=${year}`,
+        `/api/openf1/sessions`,
         {},
         {
           maxRetries: 3,
           onRetry: (attempt, maxRetries) => {
-            console.log(`Retrying sessions fetch: ${attempt}/${maxRetries}`);
+            console.log(`Retrying OpenF1 sessions fetch: ${attempt}/${maxRetries}`);
           },
         }
       );
-      setMeetings(data.meetings || []);
+      
+      // Transform OpenF1 sessions to meeting format
+      const transformedMeetings = data.sessions.map(session => ({
+        key: session.sessionKey,
+        name: session.name,
+        officialName: session.name,
+        location: session.location,
+        country: {
+          Name: session.countryName,
+        },
+        circuit: session.circuitShortName,
+        sessions: [{
+          key: session.sessionKey,
+          name: session.sessionName,
+          type: session.sessionType,
+          startDate: session.dateStart,
+          endDate: session.dateEnd,
+          sessionKey: session.sessionKey,
+          meetingKey: session.meetingKey,
+        }],
+      }));
+      
+      setMeetings(transformedMeetings);
+      // Auto-expand the first (and only) meeting
+      if (transformedMeetings.length > 0) {
+        setExpandedMeeting(transformedMeetings[0].key);
+      }
     } catch (e) {
-      setError(e.message || "Failed to fetch sessions");
-      console.error("Error fetching sessions:", e);
+      setError(e.message || "Failed to fetch OpenF1 sessions");
+      console.error("Error fetching OpenF1 sessions:", e);
     } finally {
       setLoading(false);
     }
@@ -182,11 +195,11 @@ export default function SessionBrowser({ onSelectSession, onBack }) {
 
   const handleSelectSession = (meeting, session) => {
     onSelectSession({
-      year,
-      meeting,
-      session,
-      sessionPath: session.path,
-      interpolationQuality, // Pass selected quality
+      sessionKey: session.sessionKey,
+      meetingKey: session.meetingKey,
+      name: session.name,
+      type: session.type,
+      interpolationQuality,
     });
   };
 
@@ -199,37 +212,13 @@ export default function SessionBrowser({ onSelectSession, onBack }) {
       <Header>
         <div>
           <h1 style={{ marginBottom: "var(--space-2)" }}>
-            <strong>SESSION BROWSER</strong>
+            <strong>OPENF1 HISTORICAL SESSION</strong>
           </h1>
           <p style={{ color: "grey" }}>
-            Select a historical session to replay
+            Select the historical session to replay
           </p>
         </div>
         <div style={{ display: "flex", gap: "var(--space-3)", alignItems: "center" }}>
-          <YearSelector>
-            <label htmlFor="year-select">
-              <strong>Year:</strong>
-            </label>
-            <select
-              id="year-select"
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
-              style={{
-                padding: "var(--space-2)",
-                backgroundColor: "var(--colour-bg)",
-                color: "var(--colour-fg)",
-                border: "1px solid var(--colour-border)",
-                borderRadius: "4px",
-              }}
-            >
-              {availableYears.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
-          </YearSelector>
-          
           <YearSelector>
             <label htmlFor="quality-select" title="Animation smoothness">
               <strong>Quality:</strong>
@@ -260,29 +249,30 @@ export default function SessionBrowser({ onSelectSession, onBack }) {
       </Header>
 
       <InfoBanner>
-        <strong>⚠️ IMPORTANT:</strong> The F1 API doesn't record position data every second. 
-        Some sessions only have 2-3 position snapshots with <strong>identical coordinates</strong> (placeholder data). 
+        <strong>🏎️ OpenF1 API Integration:</strong> Now using OpenF1 API for historical replay data.
         <br/><br/>
-        <strong>✅ Known working sessions:</strong>
+        <strong>✅ Available Session:</strong>
         <ul style={{marginTop: "8px", marginBottom: "0"}}>
-          <li>2024 Abu Dhabi GP → Race (200+ snapshots)</li>
-          <li>2024 Brazil GP → Race (250+ snapshots)</li>
-          <li>2024 Las Vegas GP → Race (180+ snapshots)</li>
-          <li>2024 Singapore GP → Qualifying (150+ snapshots)</li>
+          <li><strong>2023 Singapore Grand Prix - Practice 1</strong></li>
+          <li>Complete location data (X,Y,Z coordinates) for real-time map tracking</li>
+          <li>Full telemetry: car position, speed, throttle, brake, RPM, gear, DRS</li>
+          <li>Race control messages, lap times, and driver information</li>
         </ul>
         <br/>
-        If a session shows "STATIC POSITION DATA" error, the API data is genuinely incomplete.
+        <strong>Note:</strong> Practice sessions have the most complete telemetry data. Race sessions may have limited location data availability.
+        <br/>
+        Data source: <a href="https://openf1.org" target="_blank" rel="noopener noreferrer" style={{color: "rgba(0, 180, 255, 1)"}}>api.openf1.org</a>
       </InfoBanner>
 
       {error && <ErrorMessage>Error: {error}</ErrorMessage>}
 
       {loading ? (
-        <LoadingSpinner>Loading sessions...</LoadingSpinner>
+        <LoadingSpinner>Loading OpenF1 sessions...</LoadingSpinner>
       ) : (
         <div>
           {meetings.length === 0 ? (
             <p style={{ textAlign: "center", padding: "var(--space-4)" }}>
-              No sessions found for {year}
+              No OpenF1 sessions available
             </p>
           ) : (
             meetings.map((meeting) => (
