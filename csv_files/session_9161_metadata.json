@@ -1,0 +1,33 @@
+{
+  "sessionInfo": {
+    "meeting_key": 1219,
+    "session_key": 9161,
+    "location": "Marina Bay",
+    "date_start": "2023-09-16T13:00:00+00:00",
+    "date_end": "2023-09-16T14:00:00+00:00",
+    "session_type": "Qualifying",
+    "session_name": "Qualifying",
+    "country_key": 157,
+    "country_code": "SGP",
+    "country_name": "Singapore",
+    "circuit_key": 61,
+    "circuit_short_name": "Singapore",
+    "gmt_offset": "08:00:00",
+    "year": 2023
+  },
+  "meeting": {
+    "meeting_key": 1219,
+    "circuit_key": 61,
+    "circuit_short_name": "Singapore",
+    "meeting_code": "SGP",
+    "location": "Marina Bay",
+    "country_key": 157,
+    "country_code": "SGP",
+    "country_name": "Singapore",
+    "meeting_name": "Singapore Grand Prix",
+    "meeting_official_name": "FORMULA 1 SINGAPORE AIRLINES SINGAPORE GRAND PRIX 2023 ",
+    "gmt_offset": "08:00:00",
+    "date_start": "2023-09-15T09:30:00+00:00",
+    "year": 2023
+  }
+}
