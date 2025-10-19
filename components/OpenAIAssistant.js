@@ -499,9 +499,11 @@ export default function OpenAIAssistant({
       const data = await response.json();
       console.log('[AI] Summary received:', data.source || 'unknown source');
       console.log('[AI] Full response:', data);
-      
+
       // Handle different response structures
       const summaryText = data.summary || data.answer || '';
+      console.log('[AI] 🎨 Setting summary text:', summaryText.substring(0, 200) + '...');
+      console.log('[AI] 🎨 Summary length:', summaryText.length, 'characters');
       setSummary(summaryText);
       setLastRefresh(Date.now());
     } catch (err) {
@@ -570,10 +572,12 @@ export default function OpenAIAssistant({
       const data = await response.json();
       console.log('[AI] Answer received:', data.source || 'unknown source');
       console.log('[AI] Full response:', data);
-      
+
       // Handle different response structures
       const answerText = data.answer || data.summary || 'No response generated.';
-      
+      console.log('[AI] 🎨 Setting answer text:', answerText.substring(0, 200) + '...');
+      console.log('[AI] 🎨 Answer length:', answerText.length, 'characters');
+
       // Add AI response to chat
       const aiMessage = {
         isUser: false,
@@ -665,14 +669,22 @@ export default function OpenAIAssistant({
             ) : summary ? (
               <SummaryContent>
                 {summary.split('\n').map((line, idx) => {
-                  if (line.startsWith('**') && line.endsWith('**')) {
-                    return <strong key={idx}>{line.replace(/\*\*/g, '')}</strong>;
-                  } else if (line.startsWith('•')) {
-                    return <li key={idx}>{line.substring(1).trim()}</li>;
+                  // Handle **text** as bold (even if not at start/end)
+                  if (line.includes('**')) {
+                    const parts = line.split('**');
+                    return (
+                      <p key={idx}>
+                        {parts.map((part, i) =>
+                          i % 2 === 1 ? <strong key={i} style={{ color: '#00ff88', display: 'inline' }}>{part}</strong> : part
+                        )}
+                      </p>
+                    );
+                  } else if (line.startsWith('•') || line.startsWith('-')) {
+                    return <li key={idx} style={{ listStyle: 'none', marginLeft: 0 }}>{line.substring(1).trim()}</li>;
                   } else if (line.trim()) {
                     return <p key={idx}>{line}</p>;
                   }
-                  return null;
+                  return <br key={idx} />;
                 })}
               </SummaryContent>
             ) : (
@@ -708,7 +720,22 @@ export default function OpenAIAssistant({
                 {chatHistory.map((msg, idx) => (
                   <MessageBubble key={idx} $isUser={msg.isUser} style={msg.isError ? { borderColor: '#e10600', backgroundColor: 'rgba(225, 6, 0, 0.1)' } : {}}>
                     <div className="label">{msg.isUser ? 'You' : msg.isError ? '⚠️ Error' : 'AI Strategist'}</div>
-                    <div className="content" style={msg.isError ? { color: '#ff6b6b' } : {}}>{msg.text}</div>
+                    <div className="content" style={msg.isError ? { color: '#ff6b6b' } : {}}>
+                      {/* Format ChatGPT responses with basic markdown support */}
+                      {msg.text.split('\n').map((line, i) => {
+                        if (line.includes('**')) {
+                          const parts = line.split('**');
+                          return (
+                            <div key={i}>
+                              {parts.map((part, j) =>
+                                j % 2 === 1 ? <strong key={j} style={{ color: msg.isUser ? '#e10600' : '#00bfff' }}>{part}</strong> : part
+                              )}
+                            </div>
+                          );
+                        }
+                        return <div key={i}>{line}</div>;
+                      })}
+                    </div>
                     <div className="timestamp">
                       🕐 {msg.timestamp}
                     </div>
