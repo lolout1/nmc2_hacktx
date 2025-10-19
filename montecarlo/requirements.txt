@@ -1,0 +1,5 @@
+numpy>=1.21.0
+pandas>=1.3.0
+torch>=2.0.0  # GPU acceleration (CPU-only install: pip install torch --index-url https://download.pytorch.org/whl/cpu)
+openai>=1.0.0  # OpenAI GPT-4 for RAG system
+sentence-transformers>=2.2.0  # Embeddings for RAG system

@@ -1,0 +1,181 @@
+import styled from "styled-components";
+import { useEffect, useState } from "react";
+import DraggableSidebar from "./DraggableSidebar";
+
+const PitLaneContent = styled.div`
+  padding: var(--space-3);
+  min-width: 200px;
+  max-width: 250px;
+  max-height: 300px;
+  overflow-y: auto;
+`;
+
+const PitEntry = styled.div`
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  margin-bottom: var(--space-2);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  border-left: 3px solid ${props => props.teamColor ? `#${props.teamColor}` : 'var(--colour-border)'};
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const DriverImage = styled.img`
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid ${props => props.teamColor ? `#${props.teamColor}` : 'var(--colour-border)'};
+`;
+
+const DriverImagePlaceholder = styled.div`
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: ${props => props.teamColor ? `#${props.teamColor}` : 'var(--colour-border)'};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 14px;
+  color: white;
+  border: 2px solid ${props => props.teamColor ? `#${props.teamColor}` : 'var(--colour-border)'};
+`;
+
+const DriverInfo = styled.div`
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+`;
+
+const DriverName = styled.div`
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--colour-fg);
+`;
+
+const DriverNumber = styled.span`
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+`;
+
+const PitDuration = styled.div`
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  font-family: 'Courier New', monospace;
+`;
+
+const PitLap = styled.div`
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.5);
+`;
+
+/**
+ * PitLane Component
+ * Shows which drivers are currently in the pit lane
+ * @param {Array} pitStops - Array of pit stop data from OpenF1
+ * @param {Object} driverList - Driver information
+ * @param {string} currentTime - Current session time (ISO 8601)
+ */
+const PitLane = ({ pitStops = [], driverList = {}, currentTime }) => {
+  const [activePits, setActivePits] = useState([]);
+
+  useEffect(() => {
+    if (!pitStops || pitStops.length === 0 || !currentTime) {
+      setActivePits([]);
+      return;
+    }
+
+    // Find pit stops that are active at current time
+    // A pit stop is active from its date to date + pit_duration
+    const currentTimeMs = new Date(currentTime).getTime();
+    
+    const active = pitStops.filter(pit => {
+      const pitStartTime = new Date(pit.date).getTime();
+      const pitEndTime = pitStartTime + (pit.pit_duration * 1000); // Convert seconds to ms
+      
+      // Check if current time is within pit stop window
+      return currentTimeMs >= pitStartTime && currentTimeMs <= pitEndTime;
+    });
+
+    // Sort by pit start time (most recent first)
+    active.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    setActivePits(active);
+  }, [pitStops, currentTime]);
+
+  // Always show during replay if pit data exists, with a message when empty
+  const showComponent = pitStops && pitStops.length > 0;
+  
+  if (!showComponent) {
+    return null;
+  }
+
+  return (
+    <DraggableSidebar
+      title={`🔧 PIT LANE ${activePits.length > 0 ? `(${activePits.length})` : ''}`}
+      defaultPosition={{ x: window.innerWidth - 270, y: window.innerHeight - 350 }}
+      zIndex={100}
+      storageKey="pit-lane-position"
+      icon="🔧"
+    >
+      <PitLaneContent>
+        {activePits.length === 0 ? (
+          <div style={{ 
+            padding: 'var(--space-2)', 
+            fontSize: '12px', 
+            color: 'rgba(255, 255, 255, 0.5)',
+            textAlign: 'center'
+          }}>
+            No active pit stops
+          </div>
+        ) : (
+          activePits.map((pit, index) => {
+            const driver = driverList[pit.driver_number];
+            const driverName = driver?.Tla || driver?.BroadcastName || `#${pit.driver_number}`;
+            const teamColor = driver?.TeamColour;
+            const headshotUrl = driver?.HeadshotUrl;
+
+            return (
+              <PitEntry key={`${pit.driver_number}-${pit.date}-${index}`} teamColor={teamColor}>
+                {headshotUrl ? (
+                  <DriverImage 
+                    src={headshotUrl} 
+                    alt={driverName}
+                    teamColor={teamColor}
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      e.target.nextSibling.style.display = 'flex';
+                    }}
+                  />
+                ) : (
+                  <DriverImagePlaceholder teamColor={teamColor}>
+                    {driverName.substring(0, 2)}
+                  </DriverImagePlaceholder>
+                )}
+                
+                <DriverInfo>
+                  <DriverName>
+                    {driverName}
+                    <DriverNumber> #{pit.driver_number}</DriverNumber>
+                  </DriverName>
+                  <PitDuration>⏱️ {pit.pit_duration?.toFixed(1)}s</PitDuration>
+                  <PitLap>Lap {pit.lap_number}</PitLap>
+                </DriverInfo>
+              </PitEntry>
+            );
+          })
+        )}
+      </PitLaneContent>
+    </DraggableSidebar>
+  );
+};
+
+export default PitLane;
+
