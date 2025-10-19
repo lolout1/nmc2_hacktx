@@ -107,7 +107,7 @@ const StatusBadge = styled.span`
  * @param {Object} driverList - Driver information
  * @param {Array} timingData - Timing data for predictions
  */
-const MLPredictions = ({ sessionData, driverList = {}, timingData = {} }) => {
+const MLPredictions = ({ sessionData, driverList = {}, timingData = {}, voiceService }) => {
   const [predictions, setPredictions] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -130,6 +130,17 @@ const MLPredictions = ({ sessionData, driverList = {}, timingData = {} }) => {
       const data = await response.json();
       setPredictions(data.predictions);
       setLastUpdate(new Date().toISOString());
+
+      // Voice announcement for top prediction
+      if (voiceService && voiceService.isEnabled && data.predictions?.raceWinner?.[0]) {
+        const topPrediction = data.predictions.raceWinner[0];
+        const odds = Math.round((1 / topPrediction.probability) * 100) / 100;
+        voiceService.announceRacePrediction({
+          driver: topPrediction.driver,
+          probability: topPrediction.probability,
+          odds: odds
+        });
+      }
     } catch (err) {
       console.error('[ML] Prediction error:', err);
       setError(err.message);

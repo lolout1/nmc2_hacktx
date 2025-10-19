@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import moment from "moment";
 
-const BettingSidebar = ({ driverList, timingData, sessionInfo }) => {
+const BettingSidebar = ({ driverList, timingData, sessionInfo, voiceService }) => {
   const [userBets, setUserBets] = useState({});
   const [userBalance, setUserBalance] = useState(1000);
   const [showBettingModal, setShowBettingModal] = useState(false);
@@ -125,6 +125,16 @@ const BettingSidebar = ({ driverList, timingData, sessionInfo }) => {
     setShowBettingModal(false);
     setBetAmount(0);
     setSelectedDriver(null);
+
+    // Voice announcement for betting decision
+    if (voiceService && voiceService.isEnabled) {
+      voiceService.announceBettingDecision(
+        selectedDriver.name,
+        betType,
+        betAmount,
+        odds
+      );
+    }
   };
 
   const calculatePotentialPayout = (amount, odds) => {
@@ -155,6 +165,9 @@ const BettingSidebar = ({ driverList, timingData, sessionInfo }) => {
     );
   }
 
+  // Track previous positions for voice announcements
+  const [previousPositions, setPreviousPositions] = useState({});
+
   const drivers = Object.entries(driverList).map(([number, driver]) => {
     const timingLine = timingData.Lines[number];
     const position = timingLine?.Position || "20";
@@ -172,6 +185,25 @@ const BettingSidebar = ({ driverList, timingData, sessionInfo }) => {
       color: driver.TeamColour ? `#${driver.TeamColour}` : "#666666"
     };
   }).sort((a, b) => a.position - b.position);
+
+  // Check for position changes and announce them
+  useEffect(() => {
+    if (voiceService && voiceService.isEnabled && Object.keys(previousPositions).length > 0) {
+      drivers.forEach(driver => {
+        const prevPos = previousPositions[driver.number];
+        if (prevPos && prevPos !== driver.position) {
+          voiceService.announcePositionChange(driver.name, prevPos, driver.position);
+        }
+      });
+    }
+    
+    // Update previous positions
+    const newPreviousPositions = {};
+    drivers.forEach(driver => {
+      newPreviousPositions[driver.number] = driver.position;
+    });
+    setPreviousPositions(newPreviousPositions);
+  }, [drivers, voiceService]);
 
   return (
     <>

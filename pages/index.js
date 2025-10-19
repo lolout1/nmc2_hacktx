@@ -15,6 +15,7 @@ import MLPredictions from "@monaco/components/MLPredictions";
 import StrategyFocusSelector from "@monaco/components/StrategyFocusSelector";
 import StrategyCommandCenter from "@monaco/components/StrategyCommandCenter";
 import BettingSidebar from "@monaco/components/BettingSidebar";
+import VoiceControls from "@monaco/components/VoiceControls";
 import { buildTimeline, ReplayEngine } from "@monaco/utils/replayEngine";
 import sessionCache from "@monaco/utils/sessionCache";
 import { fetchJSON } from "@monaco/utils/apiClient";
@@ -97,6 +98,9 @@ export default function Home() {
   // Strategy focus state
   const [focusDriver, setFocusDriver] = useState(null);
   const [compareMode, setCompareMode] = useState(false);
+
+  // Voice service state
+  const [voiceService, setVoiceService] = useState(null);
 
   const socket = useRef();
   const retry = useRef();
@@ -1008,6 +1012,7 @@ export default function Home() {
                 sessionData={SessionInfo}
                 driverList={DriverList}
                 timingData={TimingData}
+                voiceService={voiceService}
               />
             )}
             
@@ -1141,12 +1146,16 @@ export default function Home() {
           </div>
         </ResponsiveTable>
 
+        {/* Voice Controls */}
+        <VoiceControls onVoiceServiceReady={setVoiceService} />
+
         {/* Betting Sidebar - only show in live mode */}
         {mode === "live" && DriverList && TimingData && (
           <BettingSidebar
             driverList={DriverList}
             timingData={TimingData}
             sessionInfo={SessionInfo}
+            voiceService={voiceService}
           />
         )}
 
