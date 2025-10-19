@@ -29,7 +29,7 @@ const Modal = styled.div`
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
   border-radius: 12px;
   width: 560px;
-  max-height: 70vh;
+  max-height: 85vh;
   display: flex;
   flex-direction: column;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
@@ -223,7 +223,7 @@ const ChatHistory = styled.div`
   flex-direction: column;
   gap: var(--space-2);
   margin-bottom: var(--space-3);
-  max-height: 350px;
+  max-height: 500px;
   overflow-y: auto;
 `;
 
