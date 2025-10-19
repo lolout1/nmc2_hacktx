@@ -1191,18 +1191,18 @@ export default function Home() {
       <OpenAIAssistant
         isOpen={aiModalOpen}
         onClose={() => setAiModalOpen(false)}
-        sessionKey={mode === "replay" ? selectedSession?.sessionKey : SessionInfo?.session_key}
+        sessionKey={selectedSession?.sessionKey}
         driverNumber={focusDriver || 1}
         driverName={DriverList?.[focusDriver || 1]?.BroadcastName}
         raceData={{
-          sessionData: mode === "replay" ? selectedSession : SessionInfo,
+          sessionData: selectedSession,
           timingData: TimingData,
           driverList: DriverList,
           currentLap: LapCount?.CurrentLap,
           weatherData: WeatherData,
           positionData: Position,
           trackStatus: TrackStatus,
-          sessionKey: mode === "replay" ? selectedSession?.sessionKey : SessionInfo?.session_key,
+          sessionKey: selectedSession?.sessionKey,
           driverNumber: focusDriver || 1
         }}
       />

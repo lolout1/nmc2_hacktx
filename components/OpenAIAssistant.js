@@ -10,6 +10,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { buildStrategicContext, formatContextForAI } from '../utils/buildAIContext';
 import { buildDriverSnapshot } from '../utils/buildDriverSnapshot';
+import { buildCompactRaceContext, formatCompactContextForAI } from '../utils/buildCompactRaceContext';
 
 const Overlay = styled.div`
   position: fixed;
@@ -496,8 +497,15 @@ export default function OpenAIAssistant({
 
     try {
       console.log('[AI] Fetching summary for driver', driverNumber, 'session', sessionKey);
-      
-      // Simple ChatGPT request with system prompt
+
+      // Build compact race context with surrounding cars and ML predictions
+      const compactContext = buildCompactRaceContext(raceData, driverNumber, strategyData);
+      const formattedContext = formatCompactContextForAI(compactContext);
+
+      console.log('[AI] 📊 Built compact context for summary with', compactContext?.surroundingDrivers?.length || 0, 'surrounding cars');
+      console.log('[AI] 🤖 ML predictions included:', !!compactContext?.mlPredictions);
+
+      // Send request with race data
       const response = await fetch('/api/ai/fallback-ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -506,7 +514,8 @@ export default function OpenAIAssistant({
           sessionKey,
           driverNumber,
           driverName: driverName || `Driver #${driverNumber}`,
-          simple: true // Use simple ChatGPT mode
+          context: formattedContext, // Send formatted race context with ML predictions
+          simple: false // Use context-aware mode
         })
       });
 
@@ -580,8 +589,15 @@ export default function OpenAIAssistant({
 
     try {
       console.log('[AI] Asking question:', questionText);
-      
-      // Simple ChatGPT request
+
+      // Build compact race context with surrounding cars and ML predictions
+      const compactContext = buildCompactRaceContext(raceData, driverNumber, strategyData);
+      const formattedContext = formatCompactContextForAI(compactContext);
+
+      console.log('[AI] 📊 Built compact context with', compactContext?.surroundingDrivers?.length || 0, 'surrounding cars');
+      console.log('[AI] 🤖 ML predictions included:', !!compactContext?.mlPredictions);
+
+      // Send request with race data
       const response = await fetch('/api/ai/fallback-ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -591,7 +607,8 @@ export default function OpenAIAssistant({
           driverNumber,
           question: questionText,
           driverName: driverName || `Driver #${driverNumber}`,
-          simple: true // Use simple ChatGPT mode
+          context: formattedContext, // Send formatted race context with ML predictions
+          simple: false // Use context-aware mode
         })
       });
 

@@ -181,7 +181,7 @@ export default async function handler(req, res) {
     if (action === 'summary') {
       if (simple) {
         console.log('[Fallback AI] 🔥 Using simple mode - calling ChatGPT directly');
-        const summary = await generateSimpleOpenAISummary(openai, driverName || `Driver #${driverNumber}`, sessionKey);
+        const summary = await generateSimpleOpenAISummary(openai, driverName || `Driver #${driverNumber}`, sessionKey, context);
         console.log(`[Fallback AI] ✅ Generated simple OpenAI summary (${summary?.length || 0} chars)`);
         console.log(`[Fallback AI] Summary preview: ${summary?.substring(0, 100)}...`);
         return res.status(200).json({
@@ -190,7 +190,7 @@ export default async function handler(req, res) {
           driver_number: driverNumber,
           summary: summary,
           timestamp: new Date().toISOString(),
-          source: 'openai-simple'
+          source: context ? 'openai-context' : 'openai-simple'
         });
       } else {
         const summary = await generateOpenAISummaryFromContext(openai, context, strategicData, driverNumber);
@@ -208,7 +208,7 @@ export default async function handler(req, res) {
       // Check if simple mode
       if (simple) {
         console.log('[Fallback AI] 🔥 Using simple mode for question - calling ChatGPT directly');
-        const answer = await generateSimpleOpenAIAnswer(openai, question, driverName || `Driver #${driverNumber}`, sessionKey);
+        const answer = await generateSimpleOpenAIAnswer(openai, question, driverName || `Driver #${driverNumber}`, sessionKey, context);
         console.log(`[Fallback AI] ✅ Generated simple OpenAI answer (${answer?.length || 0} chars)`);
         console.log(`[Fallback AI] Answer preview: ${answer?.substring(0, 100)}...`);
         return res.status(200).json({
@@ -218,7 +218,7 @@ export default async function handler(req, res) {
           question,
           answer: answer,
           timestamp: new Date().toISOString(),
-          source: 'openai-simple'
+          source: context ? 'openai-context' : 'openai-simple'
         });
       }
 
@@ -652,15 +652,50 @@ function answerFromStrategicData(question, strategicData) {
 }
 
 // Simple ChatGPT functions for basic F1 strategy responses
-async function generateSimpleOpenAISummary(openai, driverName, sessionKey) {
-  const systemPrompt = `You are an F1 race strategist. Provide a realistic race strategy summary for ${driverName} in session ${sessionKey}. 
-  
+async function generateSimpleOpenAISummary(openai, driverName, sessionKey, context) {
+  // If context is provided, use it for a data-driven summary
+  if (context) {
+    const systemPrompt = `You are an expert F1 race strategist with access to ML/Monte Carlo predictions. Analyze the provided race data and give strategic recommendations.
+
+Focus on:
+- Current race position and gaps to competitors (note specific lap numbers and recent lap times)
+- Tire management (reference tire age and compound for focused driver and surrounding cars)
+- Pit strategy based on ML predictions (optimal pit window from Monte Carlo simulation)
+- Overtaking opportunities based on lap time deltas and recent performance trends
+- Risk assessment using ML risk scores
+- Final position predictions and race winner likelihood from ML models
+
+Reference specific data points:
+- Current lap numbers for each driver
+- Recent lap time trends (last 3-5 laps)
+- Tire age differences between cars
+- ML-predicted optimal pit lap and window
+- Predicted final positions with probabilities
+
+Be specific, data-driven, and actionable. Use F1 terminology. Format with clear sections.`;
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `RACE DATA:\n${context}\n\nProvide a strategic summary with specific recommendations based on this data.` }
+      ],
+      max_tokens: 500,
+      temperature: 0.7
+    });
+
+    return response.choices[0].message.content;
+  }
+
+  // Fallback to generic summary
+  const systemPrompt = `You are an F1 race strategist. Provide a realistic race strategy summary for ${driverName} in session ${sessionKey}.
+
   Focus on:
   - Current race situation and position
-  - Tire strategy and pit window opportunities  
+  - Tire strategy and pit window opportunities
   - Key risks and opportunities
   - Immediate tactical priorities
-  
+
   Keep it concise, professional, and realistic. Use F1 terminology.`;
 
   const response = await openai.chat.completions.create({
@@ -676,9 +711,47 @@ async function generateSimpleOpenAISummary(openai, driverName, sessionKey) {
   return response.choices[0].message.content;
 }
 
-async function generateSimpleOpenAIAnswer(openai, question, driverName, sessionKey) {
+async function generateSimpleOpenAIAnswer(openai, question, driverName, sessionKey, context) {
+  // If context is provided, use it for a data-driven answer
+  if (context) {
+    const systemPrompt = `You are an expert F1 race strategist with knowledge of advanced ML and Monte Carlo simulation methods.
+
+Analyze:
+- Specific gaps and intervals to surrounding cars (reference current lap numbers)
+- Lap time performance relative to competitors (use recent lap history)
+- Strategic implications of current position and tire age
+- Tactical opportunities based on real data
+- ML/Monte Carlo predictions if available (optimal pit windows, risk scores, final position predictions)
+
+When asked about methodology or "how" predictions are made:
+- Explain the Monte Carlo simulation approach (running 10,000+ race iterations with randomized variables)
+- Describe ML models used (Random Forest and XGBoost ensemble for regression/classification)
+- List key input features: lap times, tire degradation, fuel load, traffic density, weather conditions
+- Explain outputs: optimal pit lap, risk assessment (0-100), final position probabilities, race winner predictions
+
+When asked about race winner or who will win:
+- Reference the "Predicted Race Winner" from ML predictions if available
+- Consider current positions, pace trends, and pit strategy windows
+- Give probability-based assessments
+
+Be specific, reference actual lap numbers and data points, and give actionable advice. Use F1 terminology.`;
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `RACE DATA:\n${context}\n\nQUESTION: ${question}\n\nProvide a specific answer based on this data.` }
+      ],
+      max_tokens: 350,
+      temperature: 0.7
+    });
+
+    return response.choices[0].message.content;
+  }
+
+  // Fallback to generic answer
   const systemPrompt = `You are an F1 race strategist. Answer questions about race strategy for ${driverName} in session ${sessionKey}.
-  
+
   Provide realistic, professional F1 strategy advice. Use proper F1 terminology.
   Be concise but informative. Focus on practical race decisions.`;
 
