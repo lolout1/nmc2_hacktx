@@ -231,6 +231,8 @@ export function transformSessionInfo(sessionInfo, meeting) {
     EndDate: sessionInfo.date_end,
     GmtOffset: sessionInfo.gmt_offset,
     Path: `${sessionInfo.year}/${meeting.meeting_name}/`, // For compatibility
+    session_key: sessionInfo.session_key, // For ML/Strategy APIs
+    meeting_key: sessionInfo.meeting_key,
   };
 }
 

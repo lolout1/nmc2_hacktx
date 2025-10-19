@@ -227,6 +227,23 @@ function loadSessionFromCache(sessionKey) {
   try {
     const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
     
+    // Validate cache completeness - check for required files
+    const requiredFiles = ['location', 'drivers', 'pit', 'car_data'];
+    const missingFiles = [];
+    
+    for (const fileType of requiredFiles) {
+      const filePath = getCacheFilePath(sessionKey, fileType);
+      if (!fs.existsSync(filePath)) {
+        missingFiles.push(fileType);
+      }
+    }
+    
+    if (missingFiles.length > 0) {
+      console.log(`[FileCache] ⚠️ Cache is incomplete! Missing files: ${missingFiles.join(', ')}`);
+      console.log(`[FileCache] Invalidating cache - will refetch from OpenF1 API`);
+      return null; // Force refetch from API
+    }
+    
     // Load raw location data
     const rawLocationData = loadFromCsv(sessionKey, 'location') || [];
     
@@ -248,8 +265,10 @@ function loadSessionFromCache(sessionKey) {
       intervals: [],
     };
 
-    console.log(`[FileCache] Session ${sessionKey} loaded from cache`);
-    console.log(`[FileCache] Location points: ${sessionData.locationData.length} (deduplicated)`);
+    console.log(`[FileCache] ✓ Session ${sessionKey} loaded from cache`);
+    console.log(`[FileCache] - Location points: ${sessionData.locationData.length} (deduplicated)`);
+    console.log(`[FileCache] - Car data points: ${sessionData.carData.length}`);
+    console.log(`[FileCache] - Pit stops: ${sessionData.pitStops.length}`);
     
     return sessionData;
   } catch (error) {

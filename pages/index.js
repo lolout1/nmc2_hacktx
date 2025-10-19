@@ -11,6 +11,9 @@ import SessionBrowser from "@monaco/components/SessionBrowser";
 import PlaybackControls from "@monaco/components/PlaybackControls";
 import PitLane from "@monaco/components/PitLane";
 import RaceControlSidebar from "@monaco/components/RaceControlSidebar";
+import MLPredictions from "@monaco/components/MLPredictions";
+import StrategyFocusSelector from "@monaco/components/StrategyFocusSelector";
+import StrategyCommandCenter from "@monaco/components/StrategyCommandCenter";
 import { buildTimeline, ReplayEngine } from "@monaco/utils/replayEngine";
 import sessionCache from "@monaco/utils/sessionCache";
 import { fetchJSON } from "@monaco/utils/apiClient";
@@ -89,6 +92,10 @@ export default function Home() {
   const [progress, setProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(null);
   const [loadingReplay, setLoadingReplay] = useState(false);
+
+  // Strategy focus state
+  const [focusDriver, setFocusDriver] = useState(null);
+  const [compareMode, setCompareMode] = useState(false);
 
   const socket = useRef();
   const retry = useRef();
@@ -585,14 +592,6 @@ export default function Home() {
     PitStops,
   } = currentState;
 
-  // Debug: Log PitStops data availability (in render, not useEffect to avoid hooks issues)
-  if (mode === "replay" && PitStops && Math.random() < 0.05) {
-    console.log('[Index] PitStops in currentState:', {
-      count: PitStops.length,
-      firstPit: PitStops[0],
-      currentTime,
-    });
-  }
 
   if (!Heartbeat && mode === "live")
     return (
@@ -916,6 +915,18 @@ export default function Home() {
                 <strong>TRACK</strong>
               </p>
             </div>
+            
+            {/* Strategy Focus Selector - driver selection above track */}
+            {mode === "replay" && DriverList && (
+              <StrategyFocusSelector
+                driverList={DriverList}
+                selectedDriver={focusDriver}
+                onDriverSelect={setFocusDriver}
+                compareMode={compareMode}
+                onCompareModeToggle={() => setCompareMode(!compareMode)}
+              />
+            )}
+            
             {!!Position ? (
               (() => {
                 const positionToRender = Position.Position?.[Position.Position.length - 1];
@@ -972,6 +983,25 @@ export default function Home() {
                 pitStops={PitStops}
                 driverList={DriverList}
                 currentTime={currentTime}
+              />
+            )}
+            
+            {/* ML Predictions Sidebar - Monte Carlo simulations */}
+            {mode === "replay" && SessionInfo && (
+              <MLPredictions 
+                sessionData={SessionInfo}
+                driverList={DriverList}
+                timingData={TimingData}
+              />
+            )}
+            
+            {/* Strategy Command Center - HPC-powered driver-specific strategies */}
+            {mode === "replay" && focusDriver && !compareMode && (
+              <StrategyCommandCenter
+                focusDriver={focusDriver}
+                driverList={DriverList}
+                timingData={TimingData}
+                sessionData={SessionInfo}
               />
             )}
           </div>

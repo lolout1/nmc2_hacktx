@@ -103,21 +103,26 @@ export default async function handler(req, res) {
 
     // Check file cache first
     if (isSessionCached(sessionKey)) {
-      console.log(`[API OpenF1] Loading session from file cache`);
+      console.log(`[API OpenF1] Checking file cache...`);
       const cachedData = loadSessionFromCache(sessionKey);
       
       if (cachedData && cachedData.locationData.length > 0) {
-        console.log(`[API OpenF1] Using cached data with ${cachedData.locationData.length} location points`);
+        console.log(`[API OpenF1] ✓ Using complete cached data:`);
+        console.log(`  - Location: ${cachedData.locationData.length} points`);
+        console.log(`  - CarData: ${cachedData.carData?.length || 0} points`);
+        console.log(`  - PitStops: ${cachedData.pitStops?.length || 0} stops`);
         return res.status(200).json({
           sessionKey,
           source: 'File Cache (CSV)',
           timestamp: new Date().toISOString(),
           data: cachedData,
         });
+      } else {
+        console.log(`[API OpenF1] Cache validation failed (incomplete data)`);
       }
     }
 
-    console.log(`[API OpenF1] No valid cache found, fetching from OpenF1 API...`);
+    console.log(`[API OpenF1] 🔄 Fetching fresh data from OpenF1 API...`);
 
     // Fetch session info first
     const [sessionInfo] = await fetchOpenF1('sessions', {

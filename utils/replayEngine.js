@@ -473,22 +473,6 @@ export class ReplayEngine {
           },
         });
         
-        // Log telemetry updates to debug Driver component
-        if (!event.interpolated && this.currentIndex % 50 === 0) {
-          const driversInEntry = Object.keys(newEntry.Cars || {});
-          const firstDriver = driversInEntry[0];
-          const channels = newEntry.Cars?.[firstDriver]?.Channels;
-          console.log(`[Replay] Updated CarData Entries, now has ${existingEntries.length + 1} entries`, {
-            timestamp: newEntry.Utc,
-            drivers: driversInEntry.length,
-            sampleDriver: firstDriver,
-            sampleChannels: channels ? {
-              rpm: channels[0],
-              speed: channels[2],
-              gear: channels[3],
-            } : 'No channels'
-          });
-        }
       } else if (feed === "Position") {
         // For live playback, we need to keep a growing array for the Map component
         // The Map reads Position.Position[Position.Position.length - 1]

@@ -1,31 +1,12 @@
 import styled from "styled-components";
 import moment from "moment";
+import DraggableSidebar from "./DraggableSidebar";
 
-const RaceControlContainer = styled.div`
-  position: absolute;
-  top: 80px;
-  right: 20px; /* Position on the far right side */
-  background: var(--colour-bg);
-  border: 1px solid var(--colour-border);
-  border-radius: 8px;
+const RaceControlContent = styled.div`
   padding: var(--space-3);
   width: 350px;
   max-height: 500px;
   overflow-y: auto;
-  z-index: 99;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-`;
-
-const Title = styled.h3`
-  margin: 0 0 var(--space-3) 0;
-  font-size: 13px;
-  font-weight: bold;
-  color: var(--colour-fg);
-  border-bottom: 2px solid var(--colour-border);
-  padding-bottom: var(--space-2);
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
 `;
 
 const MessageList = styled.ul`
@@ -112,47 +93,51 @@ const RaceControlSidebar = ({ raceControlMessages = {}, sessionData = {} }) => {
   const recentMessages = allMessages.slice(0, 15);
 
   return (
-    <RaceControlContainer>
-      <Title>
-        🚩 RACE CONTROL
-      </Title>
-      
-      <MessageList>
-        {recentMessages.map((event, i) => {
-          const flagColors = event.Category === "Flag" ? getFlagColour(event.Flag) : {};
-          const borderColor = flagColors.bg || 'var(--colour-border)';
-          
-          return (
-            <MessageItem 
-              key={`race-control-${event.Utc}-${i}`}
-              flagColor={borderColor}
-            >
-              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px' }}>
-                <TimeStamp>
-                  {moment.utc(event.Utc).format("HH:mm:ss")}
-                  {event.Lap && ` / L${event.Lap}`}
-                </TimeStamp>
+    <DraggableSidebar
+      title="🚩 RACE CONTROL"
+      defaultPosition={{ x: window.innerWidth - 390, y: 80 }}
+      zIndex={99}
+      storageKey="race-control-position"
+      icon="🚩"
+    >
+      <RaceControlContent>
+        <MessageList>
+          {recentMessages.map((event, i) => {
+            const flagColors = event.Category === "Flag" ? getFlagColour(event.Flag) : {};
+            const borderColor = flagColors.bg || 'var(--colour-border)';
+            
+            return (
+              <MessageItem 
+                key={`race-control-${event.Utc}-${i}`}
+                flagColor={borderColor}
+              >
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px' }}>
+                  <TimeStamp>
+                    {moment.utc(event.Utc).format("HH:mm:ss")}
+                    {event.Lap && ` / L${event.Lap}`}
+                  </TimeStamp>
+                  
+                  {event.Category === "Flag" && (
+                    <FlagBadge 
+                      bgColor={flagColors.bg}
+                      fgColor={flagColors.fg}
+                    >
+                      FLAG
+                    </FlagBadge>
+                  )}
+                </div>
                 
-                {event.Category === "Flag" && (
-                  <FlagBadge 
-                    bgColor={flagColors.bg}
-                    fgColor={flagColors.fg}
-                  >
-                    FLAG
-                  </FlagBadge>
-                )}
-              </div>
-              
-              <MessageText>
-                {event.Message && event.Message.trim()}
-                {event.TrackStatus && `TrackStatus: ${event.TrackStatus}`}
-                {event.SessionStatus && `SessionStatus: ${event.SessionStatus}`}
-              </MessageText>
-            </MessageItem>
-          );
-        })}
-      </MessageList>
-    </RaceControlContainer>
+                <MessageText>
+                  {event.Message && event.Message.trim()}
+                  {event.TrackStatus && `TrackStatus: ${event.TrackStatus}`}
+                  {event.SessionStatus && `SessionStatus: ${event.SessionStatus}`}
+                </MessageText>
+              </MessageItem>
+            );
+          })}
+        </MessageList>
+      </RaceControlContent>
+    </DraggableSidebar>
   );
 };
 
