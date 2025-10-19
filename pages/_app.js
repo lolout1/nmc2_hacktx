@@ -1,4 +1,5 @@
 import { createGlobalStyle } from "styled-components";
+import ErrorBoundary from "@monaco/components/ErrorBoundary";
 
 const GlobalStyle = createGlobalStyle`
   :root {
@@ -57,7 +58,9 @@ export default function App({ Component, pageProps }) {
   return (
     <>
       <GlobalStyle />
-      <Component {...pageProps} />
+      <ErrorBoundary>
+        <Component {...pageProps} />
+      </ErrorBoundary>
     </>
   );
 }

@@ -217,13 +217,52 @@ app.prepare().then(async () => {
   // Assume we have an active session after 5 messages
   let active;
 
+  // Track client modes (live or replay)
+  const clientModes = new WeakMap();
+
+  // Handle client messages for replay mode
+  wss.on("connection", (socket) => {
+    // Default to live mode
+    clientModes.set(socket, { mode: "live" });
+
+    socket.on("message", (message) => {
+      try {
+        const data = JSON.parse(message.toString());
+        
+        // Handle mode switching
+        if (data.type === "setMode") {
+          clientModes.set(socket, { 
+            mode: data.mode,
+            replayState: data.mode === "replay" ? {} : undefined
+          });
+        }
+        
+        // Handle replay state updates from client
+        if (data.type === "replayState") {
+          const clientState = clientModes.get(socket);
+          if (clientState && clientState.mode === "replay") {
+            clientState.replayState = data.state;
+          }
+        }
+      } catch (e) {
+        console.error("Error handling client message:", e);
+      }
+    });
+  });
+
   setInterval(() => {
     active = messageCount > 5 || dev;
     wss.clients.forEach((s) => {
       if (s.readyState === ws.OPEN) {
-        s.send(active ? JSON.stringify(state) : "{}", {
-          binary: false,
-        });
+        const clientState = clientModes.get(s);
+        
+        // Send live data for live mode clients
+        if (!clientState || clientState.mode === "live") {
+          s.send(active ? JSON.stringify(state) : "{}", {
+            binary: false,
+          });
+        }
+        // Replay mode clients manage their own state
       }
     });
   }, socketFreq);

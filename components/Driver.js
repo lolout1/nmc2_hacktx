@@ -118,8 +118,20 @@ const Driver = ({
   TimingStats,
 }) => {
   const driver = DriverList[racingNumber];
-  const carData =
-    CarData.Entries[CarData.Entries.length - 1].Cars[racingNumber].Channels;
+  
+  // Safety check for CarData structure
+  if (!CarData || !CarData.Entries || CarData.Entries.length === 0) {
+    console.warn("CarData not available or empty for driver", racingNumber);
+    return null;
+  }
+  
+  const latestEntry = CarData.Entries[CarData.Entries.length - 1];
+  if (!latestEntry || !latestEntry.Cars || !latestEntry.Cars[racingNumber]) {
+    console.warn("No car data for driver", racingNumber);
+    return null;
+  }
+  
+  const carData = latestEntry.Cars[racingNumber].Channels;
 
   const rpmPercent = (carData["0"] / 15000) * 100;
   const throttlePercent = Math.min(100, carData["4"]);

@@ -7,6 +7,11 @@ import Radio from "@monaco/components/Radio";
 import Map from "@monaco/components/Map";
 import Input from "@monaco/components/Input";
 import SpeedTrap, { speedTrapColumns } from "@monaco/components/SpeedTrap";
+import SessionBrowser from "@monaco/components/SessionBrowser";
+import PlaybackControls from "@monaco/components/PlaybackControls";
+import { buildTimeline, ReplayEngine } from "@monaco/utils/replayEngine";
+import sessionCache from "@monaco/utils/sessionCache";
+import { fetchJSON } from "@monaco/utils/apiClient";
 
 const f1Url = "https://livetiming.formula1.com";
 
@@ -59,6 +64,11 @@ const getWeatherUnit = (key) => {
 };
 
 export default function Home() {
+  // Mode management
+  const [mode, setMode] = useState("live"); // "live", "browser", or "replay"
+  const [selectedSession, setSelectedSession] = useState(null);
+  
+  // Live mode state
   const [connected, setConnected] = useState(false);
   const [liveState, setLiveState] = useState({});
   const [updated, setUpdated] = useState(new Date());
@@ -68,8 +78,18 @@ export default function Home() {
   const [triggerConnection, setTriggerConnection] = useState(0);
   const [triggerTick, setTriggerTick] = useState(0);
 
+  // Replay mode state
+  const [replayEngine, setReplayEngine] = useState(null);
+  const [replayState, setReplayState] = useState({});
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [progress, setProgress] = useState(0);
+  const [currentTime, setCurrentTime] = useState(null);
+  const [loadingReplay, setLoadingReplay] = useState(false);
+
   const socket = useRef();
   const retry = useRef();
+  const progressInterval = useRef();
 
   const initWebsocket = (handleMessage) => {
     if (retry.current) {
@@ -111,6 +131,290 @@ export default function Home() {
 
     socket.current = ws;
   };
+
+  // Initialize replay mode with historical data
+  const initReplayMode = async (sessionInfo) => {
+    setLoadingReplay(true);
+    try {
+      let data;
+
+      // Check cache first
+      if (sessionCache.has(sessionInfo.sessionPath)) {
+        console.log("Loading session from cache:", sessionInfo.sessionPath);
+        data = sessionCache.get(sessionInfo.sessionPath);
+        
+        // Validate cached data - if CarData is a string or missing Entries array, it's old format
+        if (data.CarData && typeof data.CarData === "string") {
+          console.warn("Cached data has old format (compressed string), refetching...");
+          sessionCache.remove(sessionInfo.sessionPath);
+          data = null;
+        } else if (data.CarData && !data.CarData.Entries) {
+          console.warn("Cached data missing Entries array (old structure), refetching...");
+          sessionCache.remove(sessionInfo.sessionPath);
+          data = null;
+        } else if (data.Position && data.Position.Position && data.Position.Position.length <= 2) {
+          console.warn("Cached data has limited position snapshots (possibly old/incomplete data), refetching...");
+          sessionCache.remove(sessionInfo.sessionPath);
+          data = null;
+        } else if (data.Position && data.Position.Position && data.Position.Position.length >= 2) {
+          // Check if cached positions are all identical (placeholder data)
+          const pos1 = data.Position.Position[0];
+          const pos2 = data.Position.Position[1];
+          if (pos1?.Entries && pos2?.Entries) {
+            const firstDriver = Object.keys(pos1.Entries)[0];
+            const coord1 = pos1.Entries[firstDriver];
+            const coord2 = pos2.Entries[firstDriver];
+            const distance = Math.sqrt(
+              Math.pow((coord2?.X || 0) - (coord1?.X || 0), 2) +
+              Math.pow((coord2?.Y || 0) - (coord1?.Y || 0), 2)
+            );
+            if (distance < 1) {
+              console.warn("Cached data has static position coordinates (placeholder data), marking as invalid");
+              sessionCache.remove(sessionInfo.sessionPath);
+              data = null;
+            }
+          }
+        }
+      }
+      
+      if (!data) {
+        console.log("Fetching session from API:", sessionInfo.sessionPath);
+        
+        // Fetch historical session data with retry logic
+        const responseData = await fetchJSON(
+          `/api/sessions/data?sessionPath=${encodeURIComponent(sessionInfo.sessionPath)}`,
+          {},
+          {
+            maxRetries: 3,
+            timeout: 60000, // 60 second timeout for large sessions
+            onRetry: (attempt, maxRetries, delay) => {
+              console.log(`Retry ${attempt}/${maxRetries} in ${Math.round(delay)}ms`);
+            },
+          }
+        );
+        
+        data = responseData.data;
+
+        // Cache the data for future use
+        sessionCache.set(sessionInfo.sessionPath, data);
+      } else if (data) {
+        console.log("Using cached data");
+      }
+
+      // Debug: Check what data we received
+      console.log("Received session data keys:", Object.keys(data));
+      console.log("CarData structure:", data.CarData ? {
+        hasEntries: !!data.CarData.Entries,
+        entriesLength: data.CarData.Entries?.length,
+        firstEntryType: typeof data.CarData.Entries?.[0],
+        topLevelKeys: Object.keys(data.CarData).slice(0, 10), // Show first 10 keys
+        hasUtc: !!data.CarData.Utc,
+        hasCars: !!data.CarData.Cars,
+      } : "No CarData");
+      console.log("TimingData structure:", data.TimingData ? {
+        hasLines: !!data.TimingData.Lines,
+        linesCount: Object.keys(data.TimingData.Lines || {}).length
+      } : "No TimingData");
+      
+      // If CarData exists but has unexpected structure, log the full object
+      if (data.CarData && !data.CarData.Entries && !data.CarData.Cars) {
+        console.warn("CarData has unexpected structure. First 100 chars:", 
+          JSON.stringify(data.CarData).substring(0, 100));
+      }
+
+      // Data should already be decompressed by the backend API
+      // Log what we have for debugging
+      if (data.CarData?.Entries) {
+        console.log("✓ CarData has Entries array with", data.CarData.Entries.length, "snapshots");
+        console.log("  Each snapshot will become a timeline event");
+      } else if (data.CarData) {
+        console.log("✓ CarData exists but has structure:", Object.keys(data.CarData).slice(0, 10));
+      }
+
+      if (data.Position?.Position) {
+        console.log("✓ Position has Position array with", data.Position.Position.length, "snapshots");
+        console.log("  Each snapshot will become a timeline event, then interpolated");
+      } else if (data.Position) {
+        console.log("✓ Position exists but has structure:", Object.keys(data.Position).slice(0, 10));
+      }
+
+      // Validate session data quality
+      const positionCount = data.Position?.Position?.length || 0;
+      
+      // Check if we have enough position snapshots
+      if (positionCount < 2) {
+        console.error(`[Init] Insufficient position data: ${positionCount} snapshot(s). Need at least 2.`);
+        alert(
+          `❌ SESSION DATA INCOMPLETE\n\n` +
+          `This session has insufficient position data (${positionCount} snapshot${positionCount !== 1 ? 's' : ''}).\n\n` +
+          `Replays require at least 2 position snapshots with different coordinates.\n\n` +
+          `This is likely placeholder/test data. Please select a different session.\n\n` +
+          `✓ Races and Qualifying sessions from 2024 typically have complete data.`
+        );
+        setMode("browser");
+        setLoadingReplay(false);
+        return;
+      }
+      
+      // Validate that positions actually vary (not all identical)
+      if (positionCount >= 2) {
+        const pos1 = data.Position.Position[0];
+        const pos2 = data.Position.Position[1];
+        
+        if (pos1?.Entries && pos2?.Entries) {
+          const firstDriver = Object.keys(pos1.Entries)[0];
+          const coord1 = pos1.Entries[firstDriver];
+          const coord2 = pos2.Entries[firstDriver];
+          
+          const distance = Math.sqrt(
+            Math.pow((coord2?.X || 0) - (coord1?.X || 0), 2) +
+            Math.pow((coord2?.Y || 0) - (coord1?.Y || 0), 2)
+          );
+          
+          if (distance < 1) {
+            console.error(`[Init] Position data contains identical coordinates. Distance=${distance.toFixed(2)}`);
+            alert(
+              `❌ STATIC POSITION DATA\n\n` +
+              `This session has ${positionCount} position snapshots, but they all show the SAME coordinates.\n\n` +
+              `This indicates placeholder/incomplete data with no actual car movement.\n\n` +
+              `Please select a different session (preferably a 2024 Race or Qualifying).`
+            );
+            setMode("browser");
+            setLoadingReplay(false);
+            return;
+          }
+          
+          // Warn if we have very few snapshots
+          if (positionCount < 10) {
+            console.warn(`[Init] Limited position data: ${positionCount} snapshots. Replay may be choppy.`);
+          }
+        }
+      }
+
+      // Build timeline from data with user-selected interpolation quality
+      const quality = sessionInfo.interpolationQuality || 'HIGH';
+      console.log(`[Init] Building timeline with ${quality} quality interpolation`);
+      
+      const timeline = buildTimeline(data, {
+        interpolate: positionCount >= 2, // Only interpolate if we have enough data
+        quality, // User-selected: 'LOW', 'MEDIUM', 'HIGH', 'ULTRA'
+      });
+
+      // Create replay engine with time compression
+      // Time compression makes the replay run faster than real-time
+      // 100x means a 2-hour race plays in ~72 seconds
+      const engine = new ReplayEngine(timeline, {
+        playbackSpeed: 1,
+        timeCompression: 100, // 100x faster than real-time
+        onStateUpdate: (state) => {
+          setReplayState(state);
+          setUpdated(new Date());
+        },
+      });
+
+      setReplayEngine(engine);
+      setReplayState(engine.state);
+      setSelectedSession(sessionInfo);
+      setMode("replay");
+      setIsPlaying(false); // Start paused - user must press play
+      
+      console.log("[Init] Replay loaded. Press ▶ to start playback.");
+      
+      // Notify server about mode change
+      if (socket.current?.readyState === WebSocket.OPEN) {
+        socket.current.send(JSON.stringify({ type: "setMode", mode: "replay" }));
+      }
+    } catch (error) {
+      console.error("Error initializing replay mode:", error);
+      alert(`Failed to load session: ${error.message}`);
+      setMode("browser");
+    } finally {
+      setLoadingReplay(false);
+    }
+  };
+
+  // Replay control handlers
+  const handlePlay = () => {
+    if (replayEngine) {
+      replayEngine.play();
+      setIsPlaying(true);
+    }
+  };
+
+  const handlePause = () => {
+    if (replayEngine) {
+      replayEngine.pause();
+      setIsPlaying(false);
+    }
+  };
+
+  const handleSeek = (percentage) => {
+    if (replayEngine) {
+      replayEngine.seek(percentage);
+      setProgress(percentage);
+    }
+  };
+
+  const handleSpeedChange = (speed) => {
+    if (replayEngine) {
+      replayEngine.setSpeed(speed);
+      setPlaybackSpeed(speed);
+    }
+  };
+
+  const handleReset = () => {
+    if (replayEngine) {
+      replayEngine.reset();
+      setProgress(0);
+      setIsPlaying(false);
+      setReplayState(replayEngine.state);
+    }
+  };
+
+  const handleExitReplay = () => {
+    if (replayEngine) {
+      replayEngine.destroy();
+      setReplayEngine(null);
+    }
+    setMode("live");
+    setSelectedSession(null);
+    setReplayState({});
+    setIsPlaying(false);
+    setProgress(0);
+    
+    // Notify server about mode change
+    if (socket.current?.readyState === WebSocket.OPEN) {
+      socket.current.send(JSON.stringify({ type: "setMode", mode: "live" }));
+    }
+  };
+
+  // Update progress periodically when playing
+  useEffect(() => {
+    if (isPlaying && replayEngine) {
+      progressInterval.current = setInterval(() => {
+        setProgress(replayEngine.getProgress());
+        setCurrentTime(replayEngine.getCurrentTime());
+      }, 100);
+    } else if (progressInterval.current) {
+      clearInterval(progressInterval.current);
+    }
+
+    return () => {
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current);
+      }
+    };
+  }, [isPlaying, replayEngine]);
+
+  // Cleanup replay engine when component unmounts or mode changes
+  useEffect(() => {
+    return () => {
+      if (replayEngine) {
+        console.log("[Init] Cleaning up replay engine on unmount");
+        replayEngine.destroy();
+      }
+    };
+  }, [mode]); // Cleanup when mode changes
 
   useEffect(() => {
     if ("serviceWorker" in navigator) {
@@ -162,7 +466,52 @@ export default function Home() {
     }
   }, [messageCount]);
 
-  if (!connected)
+  // Show session browser in browser mode
+  if (mode === "browser") {
+    return (
+      <>
+        <Head>
+          <title>Session Browser - Monaco</title>
+        </Head>
+        <main>
+          <SessionBrowser
+            onSelectSession={initReplayMode}
+            onBack={() => setMode("live")}
+          />
+        </main>
+      </>
+    );
+  }
+
+  // Show loading state for replay
+  if (loadingReplay) {
+    return (
+      <>
+        <Head>
+          <title>Loading Session...</title>
+        </Head>
+        <main>
+          <div
+            style={{
+              width: "100vw",
+              height: "100vh",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <p style={{ marginBottom: "var(--space-4)" }}>
+              <strong>LOADING SESSION...</strong>
+            </p>
+            <p>Please wait while we load the historical data</p>
+          </div>
+        </main>
+      </>
+    );
+  }
+
+  if (!connected && mode === "live")
     return (
       <>
         <Head>
@@ -182,7 +531,12 @@ export default function Home() {
             <p style={{ marginBottom: "var(--space-4)" }}>
               <strong>NO CONNECTION</strong>
             </p>
-            <button onClick={() => window.location.reload()}>RELOAD</button>
+            <button onClick={() => window.location.reload()} style={{ marginBottom: "var(--space-2)" }}>
+              RELOAD
+            </button>
+            <button onClick={() => setMode("browser")}>
+              BROWSE HISTORICAL SESSIONS
+            </button>
           </div>
         </main>
       </>
@@ -214,6 +568,9 @@ export default function Home() {
       </>
     );
 
+  // Use appropriate state based on mode
+  const currentState = mode === "replay" ? replayState : liveState;
+
   const {
     Heartbeat,
     SessionInfo,
@@ -230,9 +587,9 @@ export default function Home() {
     CarData,
     Position,
     TeamRadio,
-  } = liveState;
+  } = currentState;
 
-  if (!Heartbeat)
+  if (!Heartbeat && mode === "live")
     return (
       <>
         <Head>
@@ -252,7 +609,12 @@ export default function Home() {
             <p style={{ marginBottom: "var(--space-4)" }}>
               <strong>NO SESSION</strong>
             </p>
-            <p>Come back later when there is a live session</p>
+            <p style={{ marginBottom: "var(--space-4)" }}>
+              Come back later when there is a live session
+            </p>
+            <button onClick={() => setMode("browser")}>
+              BROWSE HISTORICAL SESSIONS
+            </button>
           </div>
         </main>
       </>
@@ -340,29 +702,43 @@ export default function Home() {
               <p style={{ marginRight: "var(--space-4)" }}>
                 Data updated: {moment.utc(updated).format("HH:mm:ss.SSS")} UTC
               </p>
-              <p style={{ color: "limegreen", marginRight: "var(--space-4)" }}>
-                CONNECTED
-              </p>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const form = new FormData(e.target);
-                  const delayMsValue = Number(form.get("delayMs"));
-                  setBlocking(true);
-                  setDelayMs(delayMsValue);
-                  setDelayTarget(Date.now() + delayMsValue);
-                }}
-                style={{ display: "flex", alignItems: "center" }}
-              >
-                <p style={{ marginRight: "var(--space-2)" }}>Delay</p>
-                <Input
-                  type="number"
-                  name="delayMs"
-                  defaultValue={delayMs}
-                  style={{ width: "75px", marginRight: "var(--space-2)" }}
-                />
-                <p style={{ marginRight: "var(--space-4)" }}>ms</p>
-              </form>
+              {mode === "live" ? (
+                <>
+                  <p style={{ color: "limegreen", marginRight: "var(--space-4)" }}>
+                    ● LIVE
+                  </p>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const form = new FormData(e.target);
+                      const delayMsValue = Number(form.get("delayMs"));
+                      setBlocking(true);
+                      setDelayMs(delayMsValue);
+                      setDelayTarget(Date.now() + delayMsValue);
+                    }}
+                    style={{ display: "flex", alignItems: "center" }}
+                  >
+                    <p style={{ marginRight: "var(--space-2)" }}>Delay</p>
+                    <Input
+                      type="number"
+                      name="delayMs"
+                      defaultValue={delayMs}
+                      style={{ width: "75px", marginRight: "var(--space-2)" }}
+                    />
+                    <p style={{ marginRight: "var(--space-4)" }}>ms</p>
+                  </form>
+                  <button
+                    onClick={() => setMode("browser")}
+                    style={{ marginRight: "var(--space-4)" }}
+                  >
+                    📚 BROWSE HISTORY
+                  </button>
+                </>
+              ) : (
+                <p style={{ color: "orange", marginRight: "var(--space-4)" }}>
+                  ⏯ REPLAY MODE
+                </p>
+              )}
               <a
                 href="https://github.com/tdjsnelling/monaco"
                 target="_blank"
@@ -416,7 +792,7 @@ export default function Home() {
               gridTemplateColumns: !TimingData ? "1fr" : undefined,
             }}
           >
-            {!!TimingData && !!CarData ? (
+            {!!TimingData ? (
               <>
                 {(() => {
                   const lines = Object.entries(TimingData.Lines).sort(
@@ -430,23 +806,20 @@ export default function Home() {
                         }}
                       >
                         <TableHeader />
-                        {lines.slice(0, 10).map(([racingNumber, line]) => (
-                          <Driver
-                            key={`timing-data-${racingNumber}`}
-                            racingNumber={racingNumber}
-                            line={line}
-                            DriverList={DriverList}
-                            CarData={CarData}
-                            TimingAppData={TimingAppData}
-                            TimingStats={TimingStats}
-                          />
-                        ))}
-                      </div>
-                      <div>
-                        <TableHeader />
-                        {lines
-                          .slice(10, 20)
-                          .map(([racingNumber, line], pos) => (
+                        {lines.slice(0, 10).map(([racingNumber, line]) => {
+                          // Only render if we have CarData, or show simplified version
+                          if (!CarData || !CarData.Entries || CarData.Entries.length === 0) {
+                            return (
+                              <div key={`timing-data-${racingNumber}`} 
+                                style={{ 
+                                  padding: "var(--space-3)", 
+                                  borderBottom: "1px solid var(--colour-border)" 
+                                }}>
+                                <p>P{line.Position} - {DriverList?.[racingNumber]?.Tla || racingNumber}</p>
+                              </div>
+                            );
+                          }
+                          return (
                             <Driver
                               key={`timing-data-${racingNumber}`}
                               racingNumber={racingNumber}
@@ -456,7 +829,38 @@ export default function Home() {
                               TimingAppData={TimingAppData}
                               TimingStats={TimingStats}
                             />
-                          ))}
+                          );
+                        })}
+                      </div>
+                      <div>
+                        <TableHeader />
+                        {lines
+                          .slice(10, 20)
+                          .map(([racingNumber, line], pos) => {
+                            // Only render if we have CarData, or show simplified version
+                            if (!CarData || !CarData.Entries || CarData.Entries.length === 0) {
+                              return (
+                                <div key={`timing-data-${racingNumber}`}
+                                  style={{
+                                    padding: "var(--space-3)",
+                                    borderBottom: "1px solid var(--colour-border)"
+                                  }}>
+                                  <p>P{line.Position} - {DriverList?.[racingNumber]?.Tla || racingNumber}</p>
+                                </div>
+                              );
+                            }
+                            return (
+                              <Driver
+                                key={`timing-data-${racingNumber}`}
+                                racingNumber={racingNumber}
+                                line={line}
+                                DriverList={DriverList}
+                                CarData={CarData}
+                                TimingAppData={TimingAppData}
+                                TimingStats={TimingStats}
+                              />
+                            );
+                          })}
                       </div>
                     </>
                   );
@@ -466,11 +870,21 @@ export default function Home() {
               <div
                 style={{
                   display: "flex",
+                  flexDirection: "column",
                   alignItems: "center",
                   justifyContent: "center",
+                  padding: "var(--space-4)",
                 }}
               >
-                <p>NO DATA YET</p>
+                <p style={{ marginBottom: "var(--space-3)" }}><strong>NO TIMING DATA AVAILABLE</strong></p>
+                <p style={{ fontSize: "11px", color: "grey" }}>
+                  {!TimingData && "Missing TimingData. "}
+                  {!CarData && "Missing CarData. "}
+                  {CarData && (!CarData.Entries || CarData.Entries.length === 0) && "CarData has no entries. "}
+                </p>
+                <p style={{ fontSize: "11px", color: "grey", marginTop: "var(--space-2)" }}>
+                  Check browser console for details
+                </p>
               </div>
             )}
           </ResponsiveTable>
@@ -494,14 +908,28 @@ export default function Home() {
               </p>
             </div>
             {!!Position ? (
-              <Map
-                circuit={SessionInfo.Meeting.Circuit.Key}
-                Position={Position.Position[Position.Position.length - 1]}
-                DriverList={DriverList}
-                TimingData={TimingData}
-                TrackStatus={TrackStatus}
-                WindDirection={WeatherData.WindDirection}
-              />
+              (() => {
+                const positionToRender = Position.Position?.[Position.Position.length - 1];
+                
+                // Debug: Log what we're rendering every 2 seconds
+                if (mode === "replay" && positionToRender && Math.random() < 0.05) {
+                  const firstDriver = Object.keys(positionToRender.Entries || {})[0];
+                  const coords = positionToRender.Entries?.[firstDriver];
+                  console.log(`[UI] Rendering position for Map: Driver ${firstDriver} at X=${coords?.X?.toFixed(0)}, Y=${coords?.Y?.toFixed(0)}, Position buffer length=${Position.Position?.length}`);
+                }
+                
+                return (
+                  <Map
+                    circuit={SessionInfo.Meeting.Circuit.Key}
+                    Position={positionToRender}
+                    DriverList={DriverList}
+                    TimingData={TimingData}
+                    TrackStatus={TrackStatus}
+                    WindDirection={WeatherData.WindDirection}
+                  />
+                );
+              })()
+            
             ) : (
               <div
                 style={{
@@ -722,7 +1150,7 @@ export default function Home() {
         </ResponsiveTable>
 
         <p
-          style={{ color: "grey", padding: "var(--space-3)", fontSize: "11px" }}
+          style={{ color: "grey", padding: "var(--space-3)", fontSize: "11px", marginBottom: mode === "replay" ? "120px" : "0" }}
         >
           f1.tdjs.dev is not associated in any way with Formula 1 or any other
           Formula 1 companies. All data displayed is publicly available and used
@@ -730,6 +1158,22 @@ export default function Home() {
           api.multiviewer.app.
         </p>
       </main>
+      
+      {mode === "replay" && (
+        <PlaybackControls
+          isPlaying={isPlaying}
+          progress={progress}
+          currentTime={currentTime}
+          playbackSpeed={playbackSpeed}
+          sessionInfo={selectedSession}
+          onPlay={handlePlay}
+          onPause={handlePause}
+          onSeek={handleSeek}
+          onSpeedChange={handleSpeedChange}
+          onReset={handleReset}
+          onExit={handleExitReplay}
+        />
+      )}
     </>
   );
 }
